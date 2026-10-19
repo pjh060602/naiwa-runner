@@ -108,6 +108,7 @@ export class Game {
   private readonly director: LevelDirector;
   private readonly chaser = new ChaseModel();
   private readonly chaserView: ChaserView;
+  private readonly chaserRig: ChaserRig;
   private readonly rig: NaiwaRig;
   private readonly rng: () => number;
   private readonly bot: boolean;
@@ -142,6 +143,7 @@ export class Game {
   private lastPassed = 0;
   private dodgeStreak = 0;
   private bellyWas = false;
+  private kangWasVisible = false;
   private milestoneNext = MILESTONE_EVERY;
   private readonly camera: THREE.PerspectiveCamera;
 
@@ -176,6 +178,7 @@ export class Game {
     this.rig = rig;
     this.naiwaTextures = new NaiwaTextures(rig);
     this.chaserView = new ChaserView(chaserRig);
+    this.chaserRig = chaserRig;
     this.bot = options.bot;
     this.gallery = options.gallery;
     this.camYaw = options.camYaw ?? 0;
@@ -244,7 +247,7 @@ export class Game {
     this.scene.add(this.bottles.group);
     this.director = new LevelDirector(this.obstacles, this.bottles, this.rng);
 
-    this.overlay = new ResultsPanel(() => this.restart());
+    this.overlay = new ResultsPanel(() => this.restart(), () => this.backToMenu());
     console.log('[scores] 启动时读到的榜单 ' + JSON.stringify(loadScores()));
     this.menu = new MenuUI({
       onStart: () => this.startRun(),
@@ -379,7 +382,17 @@ export class Game {
       if (this.chaser.distance < chaserMax) {
         this.chaser.distance = Math.min(chaserMax, this.chaser.distance + CHASER_RECOVER * dt);
       }
-      if (this.chaser.distance <= 9) this.audio.play('chaserWarn');
+      const kangVisible = this.chaser.visible;
+      if (kangVisible) {
+        if (!this.kangWasVisible) {
+          this.audio.play('kangAppear');
+          this.audio.startChaseBed();
+        }
+        this.audio.setChaseBedIntensity(clamp01(1 - this.chaser.distance / this.chaser.visibleRange));
+      } else if (this.kangWasVisible) {
+        this.audio.stopChaseBed();
+      }
+      this.kangWasVisible = kangVisible;
       if (this.bot) this.autoPilot();
       const hit = this.obstacles.hits(this.player.aabb());
       if (hit) this.takeHit(hit);
@@ -566,7 +579,7 @@ export class Game {
     this.camFollowY += (this.player.y * 0.25 - this.camFollowY) * (1 - Math.exp(-dt / 0.12));
     const pivotY = this.camFollowY + 1.05;
     const baseLength = Math.hypot(0, CAM_HEIGHT - 1.05, CAM_BACK);
-    const chase = clamp01((CHASER_VISIBLE_RANGE - this.chaser.distance) / CHASER_VISIBLE_RANGE);
+    const chase = clamp01((this.chaser.visibleRange - this.chaser.distance) / this.chaser.visibleRange);
     const targetLength = baseLength + chase * CHASE_CAM_EXTEND_MAX;
     const dirY = (CAM_HEIGHT - 1.05) / baseLength;
     const dirZ = CAM_BACK / baseLength;
@@ -660,7 +673,9 @@ export class Game {
 
   private startRun(): void {
     this.paused = false;
+    this.audio.stopChaseBed();
     this.bellyWas = false;
+    this.kangWasVisible = false;
     this.player.reset();
     this.elapsed = 0;
     this.speed = SPEED_BASE;
@@ -675,6 +690,8 @@ export class Game {
     this.sunPatches.reset();
     this.director.gapScale = DIFFICULTY[this.difficulty].gapScale;
     this.audio.setBgmRate(DIFFICULTY[this.difficulty].bgmRate);
+    this.chaser.visibleRange = DIFFICULTY[this.difficulty].hitPull + 1;
+    console.log(`[chase] 袋鼠出现距离 = ${this.chaser.visibleRange}m（再撞一次就结束）`);
     // 场景物体在 reset() 后已就位，编译一次即可；running 每帧编译会白吃约 12% 帧预算
     this.renderer.compile(this.scene, this.camera);
     this.overlay.hide();
@@ -858,6 +875,7 @@ export class Game {
   }
 
   private startCaught(): void {
+    this.audio.stopChaseBed();
     console.log(`[caught] 被追上（距离 ${Math.floor(this.distance)}m，奶瓶 ${this.bottleCount}，撞击 ${this.hits} 次）→ 收尾演出`);
     this.beginSequence(['caught-line', 'caught-laugh'], 'caught');
   }
@@ -900,6 +918,7 @@ export class Game {
   private backToMenu(): void {
     this.paused = false;
     if (this.state !== 'result' && this.state !== 'running' && this.state !== 'caught') return;
+    this.audio.stopChaseBed();
     this.state = 'menu';
     this.overlay.hide();
     this.menu.show();
@@ -915,6 +934,7 @@ export class Game {
   private pause(): void {
     if (this.paused || this.state !== 'running') return;
     this.paused = true;
+    this.audio.stopChaseBed();
     this.menu.showPause();
     console.log('[pause] 已暂停');
   }
@@ -923,6 +943,10 @@ export class Game {
     if (!this.paused) return;
     this.paused = false;
     this.menu.hidePause();
+    if (this.chaser.danger) {
+      this.kangWasVisible = false;
+      this.audio.startChaseBed();
+    }
     console.log('[pause] 继续');
   }
 
@@ -956,6 +980,7 @@ export class Game {
     this.audio.setBgmRate(DIFFICULTY[settings.difficulty].bgmRate);
     const scale = settings.master ? 1 : 0;
     this.audio.setVolumes(settings.sfx * scale, settings.voice * scale, settings.bgm * scale);
+    this.chaserRig.setSkin(settings.chaserSkin);
     // 画质档位已取消，固定最高（原「高」档）：像素比顶到设备 dpr 上限 2
     const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
     if (this.renderer.getPixelRatio() !== pixelRatio) this.renderer.setPixelRatio(pixelRatio);
@@ -1069,6 +1094,7 @@ export class Game {
     window.removeEventListener('resize', this.onResize);
     this.audio.stopClip();
     this.audio.stopBgm();
+    this.audio.stopChaseBed();
     this.backdrop.dispose();
     this.rig.dispose();
     this.renderer.dispose();

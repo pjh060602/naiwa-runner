@@ -17,7 +17,7 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* ── 层级约定：canvas(0) < fade(5) < skip-hint(6) < ambient(7) < hud(20) < overlay(25) < menu(30) ── */
+/* ── 层级约定：canvas(0) < fade(5) < skip-hint(6) < ambient(7) < hud(20) < overlay(25) < menu(30) < splash(40) ── */
 #app {
   position: fixed;
   inset: 0;
@@ -27,6 +27,114 @@ body {
 #app canvas {
   display: block;
   touch-action: none;
+}
+
+/* ── 日落标题页：全屏不透明渐变，z-index 高于主菜单(30)，触发后淡出 ── */
+#splash {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: linear-gradient(168deg, #10426c 0%, #15517f 34%, #ef7d4d 72%, #ffb85c 100%);
+  pointer-events: auto;
+  opacity: 1;
+  transition: opacity 0.2s ease;
+}
+
+#splash.closing {
+  opacity: 0;
+  pointer-events: none;
+}
+
+#splash.hidden {
+  display: none;
+}
+
+.splash-sun {
+  position: absolute;
+  top: -160px;
+  right: -120px;
+  width: 560px;
+  height: 560px;
+  border-radius: 50%;
+  background: radial-gradient(circle,
+    rgba(255, 236, 178, 0.85) 0%,
+    rgba(255, 184, 92, 0.45) 38%,
+    rgba(255, 130, 78, 0) 70%);
+  filter: blur(2px);
+  pointer-events: none;
+}
+
+.splash-sea {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 220px;
+  background:
+    linear-gradient(to top, rgba(16, 66, 108, 0.5), rgba(16, 66, 108, 0) 70%),
+    repeating-linear-gradient(to bottom,
+      rgba(255, 236, 178, 0.22) 0 2px,
+      rgba(255, 236, 178, 0) 2px 16px);
+  pointer-events: none;
+}
+
+.splash-vignette {
+  position: absolute;
+  inset: 0;
+  box-shadow: inset 0 0 140px rgba(6, 12, 22, 0.7);
+  background: radial-gradient(ellipse at center, transparent 55%, rgba(6, 12, 22, 0.4) 100%);
+  pointer-events: none;
+}
+
+.splash-inner {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 24px;
+  text-align: center;
+}
+
+.splash-title {
+  margin: 0;
+  font-size: clamp(40px, 10vw, 72px);
+  letter-spacing: 10px;
+  color: #ffd95e;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.35), 0 10px 28px rgba(255, 170, 60, 0.28);
+}
+
+.splash-sub {
+  margin: 0;
+  font-size: clamp(15px, 2.6vw, 19px);
+  letter-spacing: 2px;
+  color: rgba(255, 244, 226, 0.92);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+}
+
+.splash-hint {
+  margin: 4px 0 6px;
+  font-size: 14px;
+  letter-spacing: 1px;
+  color: rgba(255, 250, 240, 0.82);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+#splash-enter {
+  min-height: 48px;
+  padding: 12px 34px;
+  font-size: 16px;
+  font-family: inherit;
+  font-weight: 700;
+  color: #2a1c06;
+  background: linear-gradient(135deg, #ffb85c 0%, #ffd95e 55%, #ffe9a0 100%);
+  border: 1px solid rgba(255, 236, 180, 0.65);
+  border-radius: 999px;
+  cursor: pointer;
+  box-shadow: 0 10px 26px rgba(255, 170, 60, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.5);
 }
 
 /* ── 海滨日落氛围层：右上暖橙光晕 + 底部浪花光带 + 四角暗角，仅菜单/暂停时显示 ── */
@@ -267,7 +375,6 @@ body.menu-open #ambient {
   background: rgba(8, 10, 14, 0.72);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
-  cursor: pointer;
 }
 
 #overlay.hidden {
@@ -320,6 +427,17 @@ body.menu-open #ambient {
   display: none;
 }
 
+.result-distance {
+  margin: 0 0 clamp(10px, 3vw, 16px);
+  font-size: clamp(44px, 12vw, 64px);
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: 0.02em;
+  color: #f5d93a;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.35), 0 10px 28px rgba(255, 170, 60, 0.28);
+}
+
 .result-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -353,8 +471,20 @@ body.menu-open #ambient {
   font-variant-numeric: tabular-nums;
 }
 
-.result-hint {
+.result-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
   margin-top: clamp(10px, 3vw, 14px);
+}
+
+.result-actions .menu-button {
+  width: 100%;
+  min-height: 44px;
+}
+
+.result-hint {
+  margin-top: clamp(8px, 2.4vw, 12px);
   font-size: clamp(12px, 3.2vw, 13px);
   color: #9aa4b3;
 }
@@ -367,6 +497,7 @@ body.menu-open #ambient {
 
 @media (max-height: 460px) {
   .result-panel {
+    max-height: 94vh;
     max-height: 94dvh;
   }
   .result-grid {
@@ -403,6 +534,8 @@ body.loading #menu button {
 /* 所有菜单面板统一的磨砂玻璃底 */
 .menu-panel {
   width: min(460px, calc(100vw - 32px));
+  /* vh 兜底：老版 iOS Safari / 安卓 WebView 不支持 dvh，缺了这行 max-height 会整条失效 */
+  max-height: min(88vh, calc(100vh - 32px));
   max-height: min(88dvh, calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 32px));
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
@@ -558,36 +691,39 @@ body.loading #menu button {
   outline-offset: 2px;
 }
 
-/* 操作说明折叠开关：仅矮视口出现，其余视口保持常显 */
-#guide-toggle {
-  display: none;
-  width: 100%;
-  margin: 0 0 12px;
-}
-
-/* 按键引导两栏（内容由 menu.ts 按设备渲染，只保留一套 DOM） */
-.guide {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin: 0 0 8px;
-  padding: 16px;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+/* 引导教程面板（独立页面，沿用玻璃卡片风格） */
+#panel-guide {
   text-align: left;
 }
 
-.guide-col {
-  min-width: 0;
+#panel-guide .panel-title {
+  text-align: center;
 }
 
-.guide-title {
+.guide-section {
+  margin: 0 0 14px;
+  padding: 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.guide-section-title {
   margin: 0 0 8px;
-  font-size: 12px;
+  font-size: 13px;
   letter-spacing: 2px;
   color: rgba(255, 217, 94, 0.92);
-  text-align: center;
+}
+
+.guide-text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: rgba(214, 226, 240, 0.82);
+}
+
+.guide-text + .guide-text {
+  margin-top: 6px;
 }
 
 .guide-list {
@@ -600,24 +736,241 @@ body.loading #menu button {
 }
 
 .guide-list li {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  font-size: 12px;
-  line-height: 1.6;
-  color: rgba(214, 226, 240, 0.74);
+  font-size: 13px;
+  line-height: 1.7;
+  color: rgba(214, 226, 240, 0.82);
 }
 
-.guide-key {
-  flex: none;
-  padding: 2px 6px;
-  border-radius: 6px;
+/* 表格：固定布局 + 换行，窄屏不横向溢出 */
+.guide-table-wrap {
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.guide-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.guide-table th,
+.guide-table td {
+  padding: 8px 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  text-align: center;
+  vertical-align: middle;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.guide-table th {
+  font-size: 12px;
+  color: rgba(150, 166, 184, 0.9);
+  letter-spacing: 0.05em;
+}
+
+.guide-table thead th {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.guide-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.guide-diff {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 10px;
+  border-radius: 999px;
   font-size: 11px;
   font-weight: 700;
-  color: #ffe9a8;
-  background: rgba(255, 217, 94, 0.14);
-  border: 1px solid rgba(255, 217, 94, 0.3);
   white-space: nowrap;
+}
+
+.guide-table tr[data-difficulty='casual'] .guide-diff {
+  color: #8ff0d2;
+  background: rgba(88, 214, 178, 0.16);
+  border: 1px solid rgba(88, 214, 178, 0.42);
+}
+
+.guide-table tr[data-difficulty='standard'] .guide-diff {
+  color: #ffd95e;
+  background: rgba(255, 217, 94, 0.14);
+  border: 1px solid rgba(255, 217, 94, 0.42);
+}
+
+.guide-table tr[data-difficulty='hard'] .guide-diff {
+  color: #ff8a5c;
+  background: rgba(255, 110, 90, 0.16);
+  border: 1px solid rgba(255, 110, 90, 0.45);
+}
+
+/* 教程面板：标题与返回按钮固定，只有内容区滚动，避免 sticky 按钮压住正文 */
+#panel-guide {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  /* 双兜底：即便 dvh 不被支持，教程面板也绝不会高过视口，返回按钮永远在屏内 */
+  max-height: calc(100vh - 24px);
+  max-height: calc(100dvh - 24px);
+}
+
+/* id 选择器的 display:flex 会盖掉 .menu-panel.hidden 的 display:none，这里显式补回 */
+#panel-guide.hidden {
+  display: none;
+}
+
+#panel-guide .panel-title {
+  flex: none;
+}
+
+.guide-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
+  /* 上下渐隐提示还能继续滚 */
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 10px, #000 calc(100% - 14px), transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 10px, #000 calc(100% - 14px), transparent 100%);
+}
+
+#panel-guide-back {
+  flex: none;
+  width: 100%;
+  margin: 12px 0 0;
+}
+
+/* 切换形象面板 */
+#panel-skin {
+  text-align: center;
+}
+
+.skin-tabs {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin: 0 0 16px;
+  padding: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.skin-tab {
+  min-height: 40px;
+  padding: 0 22px;
+  font-size: 14px;
+  font-family: inherit;
+  color: #cdd9e6;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s ease, box-shadow 0.15s ease, color 0.15s ease;
+}
+
+.skin-tab.active {
+  background: linear-gradient(135deg, #ffb85c, #ffd95e);
+  color: #2a1c06;
+  font-weight: 700;
+  border-color: rgba(255, 240, 200, 0.7);
+  box-shadow: 0 6px 18px rgba(255, 170, 60, 0.38), 0 0 12px rgba(255, 217, 94, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+.skin-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.skin-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-height: 0;
+  padding: 12px;
+  font-family: inherit;
+  color: #eaf2fb;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.05);
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease, transform 0.15s ease;
+}
+
+.skin-card:hover {
+  background: rgba(255, 255, 255, 0.1);
+  transform: translateY(-1px);
+}
+
+.skin-card:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.skin-card.active {
+  border-color: #ffd95e;
+  background: rgba(255, 217, 94, 0.12);
+  box-shadow: 0 0 0 2px rgba(255, 217, 94, 0.35), 0 0 22px rgba(255, 190, 80, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.skin-preview {
+  width: 100%;
+  max-width: 168px;
+  aspect-ratio: 1 / 1;
+  object-fit: contain;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.skin-name {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.skin-check {
+  font-size: 12px;
+  color: #ffd95e;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.skin-card.active .skin-check {
+  opacity: 1;
+}
+
+#panel-skin-back {
+  width: 100%;
+}
+
+@media (max-width: 420px) {
+  .skin-cards {
+    grid-template-columns: 1fr;
+  }
+  .skin-card {
+    flex-direction: row;
+    justify-content: flex-start;
+    text-align: left;
+    gap: 12px;
+  }
+  .skin-preview {
+    width: 84px;
+    height: 84px;
+    max-width: none;
+    flex: none;
+  }
+  .skin-name {
+    flex: 1;
+  }
+  .skin-check {
+    align-self: flex-start;
+  }
 }
 
 .menu-version {
@@ -835,12 +1188,6 @@ body.loading #menu button {
   }
 }
 
-@media (max-width: 520px) {
-  .guide {
-    grid-template-columns: 1fr;
-  }
-}
-
 @media (max-width: 420px) {
   .menu-title {
     font-size: 32px;
@@ -860,23 +1207,16 @@ body.loading #menu button {
     gap: 4px;
     font-size: 11px;
   }
-}
-
-/* 矮视口（844x390 / 360x640 一类）：默认折叠操作说明；展开后面板可滚，
-   并在 #menu-main 底部加渐变渐隐提示还有内容。700px 阈值同时覆盖 390 与 640 两种高度。 */
-@media (max-height: 700px) {
-  #guide-toggle {
-    display: block;
+  .guide-table {
+    font-size: 11px;
   }
-  #menu-guide {
-    display: none;
+  .guide-table th,
+  .guide-table td {
+    padding: 7px 2px;
   }
-  #menu-main.guide-open #menu-guide {
-    display: grid;
-  }
-  #menu-main.guide-open {
-    -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 calc(100% - 32px), transparent 100%);
-    mask-image: linear-gradient(to bottom, #000 0%, #000 calc(100% - 32px), transparent 100%);
+  .guide-diff {
+    padding: 2px 6px;
+    font-size: 10px;
   }
 }
 
@@ -884,6 +1224,7 @@ body.loading #menu button {
 @media (max-height: 460px) {
   .menu-panel {
     padding: 14px 16px;
+    max-height: 94vh;
     max-height: 94dvh;
     border-radius: 20px;
   }
@@ -905,21 +1246,71 @@ body.loading #menu button {
   .diff-row {
     margin-bottom: 12px;
   }
-  .guide {
-    padding: 12px;
-  }
   .panel-title {
     margin-bottom: 12px;
+  }
+  .skin-cards {
+    margin-bottom: 10px;
+  }
+  .skin-card {
+    padding: 8px;
+    gap: 6px;
+  }
+  .skin-preview {
+    max-width: 110px;
   }
 }
 
 /* 竖屏矮机（360x640 一类）：进一步压短引导区，确保不出界 */
 @media (max-width: 380px) {
-  .guide-list li {
-    font-size: 11px;
-  }
   .diff-button {
     padding: 0 8px;
     font-size: 13px;
+  }
+}
+
+/* 结算按钮：窄屏 / 矮屏堆叠为竖排，触控目标保持 ≥44px */
+@media (max-width: 419px), (max-height: 460px) {
+  .result-actions {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-height: 460px) {
+  .result-panel {
+    padding: 14px 16px;
+  }
+  .result-head {
+    margin-bottom: 8px;
+  }
+  .result-distance {
+    margin-bottom: 8px;
+    font-size: clamp(30px, 9vw, 42px);
+  }
+  .result-grid {
+    gap: 6px;
+  }
+  .result-cell {
+    padding: 6px 8px;
+    gap: 1px;
+  }
+  .result-label {
+    font-size: 10px;
+  }
+  .result-value {
+    font-size: 15px;
+  }
+  .result-actions {
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .result-actions .menu-button {
+    min-height: 44px;
+    padding: 8px 14px;
+    font-size: 14px;
+  }
+  .result-hint {
+    margin-top: 6px;
+    font-size: 12px;
   }
 }

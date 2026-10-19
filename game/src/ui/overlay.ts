@@ -10,8 +10,8 @@ export interface RunStats {
 }
 
 /**
- * 结算面板：本局距离 / 用时 / 奶瓶 / 本局笑声次数 / 历史最高纪录。
- * 按 R 或点击重开；重开后由 Game 负责把各计数器清零。
+ * 结算面板：标题「被追上了」+ 大号距离 / 用时 / 奶瓶 / 撞击次数 / 历史最高纪录。
+ * 两个按钮各自绑定：再跑一次 / 返回主菜单；键盘 R（重开）由 Game 的输入层负责。
  */
 export class ResultsPanel {
   private readonly root = mustGet('overlay');
@@ -21,12 +21,12 @@ export class ResultsPanel {
   private readonly hitElement = mustGet('result-hits');
   private readonly bestElement = mustGet('result-best');
   private readonly recordBadge = mustGet('result-record');
+  private readonly restartButton = mustGet('result-restart');
+  private readonly menuButton = mustGet('result-menu');
 
-  constructor(private readonly onRestart: () => void) {
-    this.root.addEventListener('pointerdown', (event) => {
-      event.preventDefault();
-      this.onRestart();
-    });
+  constructor(onRestart: () => void, onBackToMenu: () => void) {
+    this.restartButton.addEventListener('click', onRestart);
+    this.menuButton.addEventListener('click', onBackToMenu);
   }
 
   show(stats: RunStats): void {

@@ -8,6 +8,7 @@ import {
   SRGBColorSpace,
   type BufferGeometry,
 } from 'three';
+import type { ChaserSkin } from '../world/chaser';
 
 export type ChaserState = 'run' | 'catch' | 'angry' | 'lunge';
 
@@ -15,6 +16,7 @@ export interface ChaserRig {
   readonly root: Group;
   setSpeed(ratio: number): void;
   setState(s: ChaserState): void;
+  setSkin(skin: ChaserSkin): void;
   update(dt: number): void;
   dispose(): void;
 }
@@ -44,13 +46,22 @@ export function createChaser(): ChaserRig {
   root.add(mesh);
 
   const loader = new TextureLoader();
-  let tex: Texture | undefined;
-  loader.load(BASE + 'models/kang_front_tex.png', (t) => {
-    t.colorSpace = SRGBColorSpace;
-    tex = t;
-    material.map = t;
-    material.needsUpdate = true;
-  }, undefined, () => undefined);
+  const textures = new Map<ChaserSkin, Texture>();
+  let currentSkin: ChaserSkin = 'meituan';
+  const skinFiles: ReadonlyArray<[ChaserSkin, string]> = [
+    ['meituan', 'models/kang_front_tex.png'],
+    ['gdut', 'models/kang_gdut_tex.png'],
+  ];
+  for (const [skin, file] of skinFiles) {
+    loader.load(BASE + file, (t) => {
+      t.colorSpace = SRGBColorSpace;
+      textures.set(skin, t);
+      if (skin === currentSkin) {
+        material.map = t;
+        material.needsUpdate = true;
+      }
+    }, undefined, () => undefined);
+  }
 
   let state: ChaserState = 'run';
   let speedRatio = 1;
@@ -63,6 +74,14 @@ export function createChaser(): ChaserRig {
   return {
     root,
     setState(next: ChaserState) { state = next; },
+    setSkin(skin: ChaserSkin) {
+      currentSkin = skin;
+      const next = textures.get(skin);
+      if (next) {
+        material.map = next;
+        material.needsUpdate = true;
+      }
+    },
     setSpeed(ratio: number) { speedRatio = ratio; },
     update(dt: number) {
       clock += dt;
@@ -113,7 +132,7 @@ export function createChaser(): ChaserRig {
     dispose() {
       geometry.dispose();
       material.dispose();
-      tex?.dispose();
+      for (const t of textures.values()) t.dispose();
     },
   };
 }

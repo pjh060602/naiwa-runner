@@ -6,6 +6,7 @@ export interface Settings {
   sfx: number;
   voice: number;
   difficulty: 'casual' | 'standard' | 'hard';
+  chaserSkin: 'meituan' | 'gdut';
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -14,6 +15,7 @@ export const DEFAULT_SETTINGS: Settings = {
   sfx: 0.8,
   voice: 0.9,
   difficulty: 'standard',
+  chaserSkin: 'meituan',
 };
 
 export interface ScoreEntry {
@@ -40,48 +42,14 @@ const HISTORY_SHOW = 10;
 
 const DIFFICULTIES: ReadonlyArray<Settings['difficulty']> = ['casual', 'standard', 'hard'];
 const DIFFICULTY_LABELS: Record<Settings['difficulty'], string> = { casual: '休闲', standard: '标准', hard: '硬核' };
-
-/** 主菜单按键引导：PC 一套、触屏一套，互斥渲染（只保留一套 DOM） */
-const GUIDE_DESKTOP = `
-  <div class="guide-col">
-    <h3 class="guide-title">基础操作</h3>
-    <ul class="guide-list">
-      <li><span class="guide-key">← →</span><span>换道</span></li>
-      <li><span class="guide-key">↑</span><span>跳（空中再按 ↑ 二段跳）</span></li>
-      <li><span class="guide-key">↓</span><span>点按滑铲 / 长按肚皮滑行</span></li>
-      <li><span class="guide-key">Esc / P</span><span>暂停</span></li>
-    </ul>
-  </div>
-  <div class="guide-col">
-    <h3 class="guide-title">进阶技巧</h3>
-    <ul class="guide-list">
-      <li>每 5 个奶瓶加速 4s</li>
-      <li>撞到障碍只让袋鼠拉近 4m（硬核 5m）</li>
-      <li>被追上才结束</li>
-    </ul>
-  </div>`;
-
-const GUIDE_TOUCH = `
-  <div class="guide-col">
-    <h3 class="guide-title">基础操作</h3>
-    <ul class="guide-list">
-      <li>左右滑动换道</li>
-      <li>上滑跳（空中再滑一次二段跳）</li>
-      <li>下滑滑铲 / 长按肚皮滑行</li>
-    </ul>
-  </div>
-  <div class="guide-col">
-    <h3 class="guide-title">进阶技巧</h3>
-    <ul class="guide-list">
-      <li>每 5 个奶瓶加速 4s</li>
-      <li>撞到障碍只让袋鼠拉近 4m（硬核 5m）</li>
-      <li>被追上才结束</li>
-      <li>点按屏幕可跳过演出</li>
-    </ul>
-  </div>`;
+const CHASER_SKINS: ReadonlyArray<Settings['chaserSkin']> = ['meituan', 'gdut'];
 
 function isDifficulty(value: unknown): value is Settings['difficulty'] {
   return typeof value === 'string' && (DIFFICULTIES as readonly string[]).includes(value);
+}
+
+function isChaserSkin(value: unknown): value is Settings['chaserSkin'] {
+  return typeof value === 'string' && (CHASER_SKINS as readonly string[]).includes(value);
 }
 
 export function loadSettings(): Settings {
@@ -93,6 +61,7 @@ export function loadSettings(): Settings {
     const pick = <K extends keyof Settings>(key: K): Settings[K] =>
       typeof p[key] === typeof DEFAULT_SETTINGS[key] ? (p[key] as Settings[K]) : DEFAULT_SETTINGS[key];
     const difficulty = pick('difficulty');
+    const chaserSkin = pick('chaserSkin');
     return {
       master: pick('master'),
       bgm: pick('bgm'),
@@ -100,6 +69,8 @@ export function loadSettings(): Settings {
       voice: pick('voice'),
       // 难度只认三个枚举值：手改坏的存档回默认
       difficulty: isDifficulty(difficulty) ? difficulty : DEFAULT_SETTINGS.difficulty,
+      // 形象只认两个枚举值：手改坏的存档回默认（旧存档缺字段时 pick 已回落默认）
+      chaserSkin: isChaserSkin(chaserSkin) ? chaserSkin : DEFAULT_SETTINGS.chaserSkin,
     };
   } catch {
     return { ...DEFAULT_SETTINGS };
@@ -339,21 +310,20 @@ export class MenuUI {
   private readonly panelSettings = mustGet('panel-settings');
   private readonly panelScores = mustGet('panel-scores');
   private readonly panelPause = mustGet('panel-pause');
+  private readonly panelGuide = mustGet('panel-guide');
+  private readonly panelSkin = mustGet('panel-skin');
   private readonly scoreList = mustGet('score-list');
   private readonly scoreEmpty = mustGet('score-empty');
   private readonly historyBest = mustGet('history-best');
   private readonly confirmRow = mustGet('score-confirm');
   private readonly versionLabel = mustGet('menu-version');
   private readonly diffRoot = mustGet('menu-difficulty');
-  private readonly guide = mustGet('menu-guide');
-  private readonly guideToggle = mustGet('guide-toggle');
 
   private settings: Settings;
 
   constructor(private readonly handlers: MenuHandlers) {
     this.settings = loadSettings();
     this.versionLabel.textContent = 'v0.4 · 本地历史纪录';
-    this.renderDeviceTexts();
 
     mustGet('menu-start').addEventListener('click', () => {
       this.hide();
@@ -361,15 +331,27 @@ export class MenuUI {
     });
     mustGet('menu-scores').addEventListener('click', () => this.showScores());
     mustGet('menu-settings').addEventListener('click', () => this.showSettings());
+    mustGet('menu-guide-btn').addEventListener('click', () => this.showGuide());
+    mustGet('menu-skin-btn').addEventListener('click', () => this.showSkin());
     mustGet('panel-settings-back').addEventListener('click', () => this.showMain());
     mustGet('panel-scores-back').addEventListener('click', () => this.showMain());
+    mustGet('panel-guide-back').addEventListener('click', () => this.showMain());
+    mustGet('panel-skin-back').addEventListener('click', () => this.showMain());
 
-    // 矮视口下折叠/展开操作说明（CSS 默认折叠，这里只负责切换与无障碍状态）
-    this.guideToggle.addEventListener('click', () => {
-      const open = this.panelMenu.classList.toggle('guide-open');
-      this.guideToggle.setAttribute('aria-expanded', String(open));
-      this.guideToggle.textContent = open ? '操作说明 ▴' : '操作说明 ▾';
+    // 形象预览图必须由 JS 拼 BASE_URL（线上部署在 /naiwa-runner/ 子路径）
+    const skinBase = import.meta.env.BASE_URL;
+    (mustGet('skin-preview-meituan') as HTMLImageElement).src = skinBase + 'models/kang_front_tex.png';
+    (mustGet('skin-preview-gdut') as HTMLImageElement).src = skinBase + 'models/kang_gdut_tex.png';
+    this.panelSkin.querySelectorAll<HTMLButtonElement>('.skin-card[data-skin]').forEach((card) => {
+      card.addEventListener('click', () => {
+        const value = card.dataset.skin;
+        if (!isChaserSkin(value)) return;
+        this.settings.chaserSkin = value;
+        this.renderSkin();
+        this.commit();
+      });
     });
+    this.renderSkin();
 
     // 难度三选一：改完立即生效并持久化
     this.diffRoot.querySelectorAll<HTMLButtonElement>('button[data-difficulty]').forEach((button) => {
@@ -422,12 +404,6 @@ export class MenuUI {
       this.renderHistory([]);
     });
 
-    window.addEventListener('resize', () => {
-      this.renderDeviceTexts();
-    });
-    const coarseQuery = window.matchMedia('(pointer: coarse)');
-    coarseQuery.addEventListener('change', () => this.renderDeviceTexts());
-
     this.commit(false);
   }
 
@@ -452,6 +428,8 @@ export class MenuUI {
     this.panelSettings.classList.add('hidden');
     this.panelScores.classList.add('hidden');
     this.panelPause.classList.remove('hidden');
+    this.panelGuide.classList.add('hidden');
+    this.panelSkin.classList.add('hidden');
     this.applyMenuOpenClass();
   }
 
@@ -476,6 +454,8 @@ export class MenuUI {
     this.panelSettings.classList.add('hidden');
     this.panelScores.classList.add('hidden');
     this.panelPause.classList.add('hidden');
+    this.panelGuide.classList.add('hidden');
+    this.panelSkin.classList.add('hidden');
   }
 
   private showSettings(): void {
@@ -483,20 +463,49 @@ export class MenuUI {
     this.panelSettings.classList.remove('hidden');
     this.panelScores.classList.add('hidden');
     this.panelPause.classList.add('hidden');
+    this.panelGuide.classList.add('hidden');
+    this.panelSkin.classList.add('hidden');
   }
 
   private showScores(): void {
     this.panelMenu.classList.add('hidden');
     this.panelSettings.classList.add('hidden');
     this.panelPause.classList.add('hidden');
+    this.panelGuide.classList.add('hidden');
+    this.panelSkin.classList.add('hidden');
     this.panelScores.classList.remove('hidden');
     this.confirmRow.classList.add('hidden');
     this.renderHistory(loadHistory());
   }
 
+  private showGuide(): void {
+    this.panelMenu.classList.add('hidden');
+    this.panelSettings.classList.add('hidden');
+    this.panelScores.classList.add('hidden');
+    this.panelPause.classList.add('hidden');
+    this.panelSkin.classList.add('hidden');
+    this.panelGuide.classList.remove('hidden');
+  }
+
+  private showSkin(): void {
+    this.panelMenu.classList.add('hidden');
+    this.panelSettings.classList.add('hidden');
+    this.panelScores.classList.add('hidden');
+    this.panelPause.classList.add('hidden');
+    this.panelGuide.classList.add('hidden');
+    this.panelSkin.classList.remove('hidden');
+    this.renderSkin();
+  }
+
   private renderDifficulty(): void {
     this.diffRoot.querySelectorAll<HTMLButtonElement>('button[data-difficulty]').forEach((button) => {
       button.classList.toggle('active', button.dataset.difficulty === this.settings.difficulty);
+    });
+  }
+
+  private renderSkin(): void {
+    this.panelSkin.querySelectorAll<HTMLButtonElement>('.skin-card[data-skin]').forEach((card) => {
+      card.classList.toggle('active', card.dataset.skin === this.settings.chaserSkin);
     });
   }
 
@@ -528,16 +537,6 @@ export class MenuUI {
 
   private applyMenuOpenClass(): void {
     document.body.classList.toggle('menu-open', !this.root.classList.contains('hidden'));
-  }
-
-  /** 主菜单操作说明按设备互斥渲染（只保留一套 DOM，避免读屏读到两套） */
-  private renderDeviceTexts(): void {
-    const touch = this.isTouchLayout();
-    this.guide.innerHTML = touch ? GUIDE_TOUCH : GUIDE_DESKTOP;
-  }
-
-  private isTouchLayout(): boolean {
-    return window.matchMedia('(pointer: coarse)').matches || window.innerWidth < 900;
   }
 
   private commit(persist = true): void {

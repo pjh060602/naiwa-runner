@@ -4,17 +4,18 @@ import {
   CHASER_MODEL_RANGE,
   CHASER_RECOVER,
   CHASER_START,
-  CHASER_VISIBLE_RANGE,
   clamp01,
 } from '../core/config';
 
 export type ChaserState = 'run' | 'catch' | 'angry' | 'lunge';
+export type ChaserSkin = 'meituan' | 'gdut';
 
 /** 与 docs 里约定的接口一致；character/chaser.ts 由另一个执行者提供 */
 export interface ChaserRig {
   readonly root: THREE.Group;
   setSpeed(ratio: number): void;
   setState(state: ChaserState): void;
+  setSkin(skin: ChaserSkin): void;
   update(dt: number): void;
   dispose(): void;
 }
@@ -48,17 +49,15 @@ export class ChaseModel {
     return this.distance <= 0;
   }
 
-  /**
-   * 是否渲染模型。
-   * 相机吊臂会随追兵靠近而拉长（见 Game.updateCamera），拉到 3.4m 以内时
-   * 追兵与镜头之间已经有 ≥2m 净空，可以和角色同框；更远时它在相机后面，渲染也看不见。
-   */
+  /** 渲染模型的距离阈值；开局按难度设为 hitPull + 1（再撞一次就结束），默认仍用 CHASER_MODEL_RANGE */
+  visibleRange = CHASER_MODEL_RANGE;
+
   get visible(): boolean {
-    return this.caught || this.distance < CHASER_MODEL_RANGE;
+    return this.caught || this.distance < this.visibleRange;
   }
 
   get danger(): boolean {
-    return this.distance < CHASER_VISIBLE_RANGE;
+    return this.distance < this.visibleRange;
   }
 }
 
@@ -100,6 +99,9 @@ export function createPlaceholderChaser(): ChaserRig {
     setState(next: ChaserState): void {
       state = next;
     },
+    setSkin(_skin: ChaserSkin): void {
+      // 占位胶囊没有贴图，换肤只对正式袋鼠生效
+    },
     update(dt: number): void {
       clock += dt;
       if (state === 'catch') {
@@ -139,7 +141,7 @@ export function createPlaceholderChaser(): ChaserRig {
 
 type ChaserModule = { createChaser?: () => ChaserRig };
 
-/** 优先用 src/character/chaser.ts 的 createChaser()；模块没就绪就落回灰色胶囊 */
+/** 优先用 src/character/chaser.ts 的 createChaser()：它同时预载美团/广工两张贴图并暴露 setSkin；模块没就绪就落回灰色胶囊 */
 export async function loadChaser(): Promise<ChaserRig> {
   const modules = import.meta.glob<ChaserModule>('../character/chaser.ts');
   const loader = modules['../character/chaser.ts'];
