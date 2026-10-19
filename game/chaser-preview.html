@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>袋鼠追兵 · 预览</title>
+    <style>
+      :root { color-scheme: dark; }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; margin: 0; }
+      body {
+        background: #10131a; color: #e9e6dc; overflow: hidden;
+        font: 13px/1.5 "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+      }
+      #view { display: block; width: 100%; height: 100%; }
+      #panel {
+        position: fixed; top: 16px; left: 16px; width: 232px; padding: 14px;
+        border-radius: 12px; background: rgba(18, 22, 31, 0.9);
+        border: 1px solid rgba(240, 194, 28, 0.25); backdrop-filter: blur(6px);
+      }
+      #panel[hidden] { display: none; }
+      #panel, #hint { user-select: none; }
+      h1 { margin: 0 0 2px; font-size: 15px; }
+      .sub { margin: 0 0 12px; color: #8b93a1; font-size: 11px; }
+      .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+      button {
+        font: inherit; color: #e9e6dc; cursor: pointer; background: #1d2430;
+        border: 1px solid #2c3746; border-radius: 8px; padding: 8px 4px;
+      }
+      button:hover { background: #26303e; }
+      button.on { background: #f0c21c; border-color: #f0c21c; color: #1a1505; font-weight: 600; }
+      label.row { display: block; margin-top: 12px; color: #9aa3b1; font-size: 11px; }
+      input[type="range"] { width: 100%; margin-top: 4px; accent-color: #f0c21c; }
+      #readout {
+        margin-top: 12px; padding-top: 10px; border-top: 1px solid #262f3c;
+        font: 11px/1.7 ui-monospace, Consolas, monospace; color: #9aa3b1;
+      }
+      #readout b { color: #f0c21c; }
+      #readout .bad { color: #ff8d6b; }
+      #hint { position: fixed; right: 16px; bottom: 14px; color: #5c6675; font-size: 11px; }
+      #boot { position: fixed; inset: 0; display: grid; place-items: center; background: #10131a; color: #9aa3b1; }
+      #boot[hidden] { display: none; }
+      #boot.err { color: #ff9c7d; padding: 24px; text-align: center; }
+      #boot code { color: #f0c21c; }
+    </style>
+  </head>
+  <body>
+    <canvas id="view"></canvas>
+    <div id="panel" hidden>
+      <h1>袋鼠追兵</h1>
+      <p class="sub">src/character/chaser.ts</p>
+      <div class="grid2">
+        <button id="run" class="on">run</button>
+        <button id="catch">catch</button>
+      </div>
+      <label class="row">speed（跑动频率 <span id="speedVal">1.00</span>）</label>
+      <input id="speed" type="range" min="0" max="1" step="0.01" value="1" />
+      <div id="readout"></div>
+    </div>
+    <div id="hint">拖拽旋转 · 滚轮缩放 · 双击复位</div>
+    <div id="boot">正在加载…</div>
+
+    <script type="module">
+      const boot = document.getElementById('boot');
+      const fail = (error) => {
+        boot.classList.add('err');
+        boot.hidden = false;
+        boot.innerHTML = '预览页加载失败：' + (error && error.message ? error.message : String(error)) +
+          '<br /><br />需要 Vite 开发服务器：在 <code>game/</code> 下 npm run dev 后访问 <code>/chaser-preview.html</code>。';
+      };
+
+      let THREE, createChaser;
+      try {
+        THREE = await import('three');
+        ({ createChaser } = await import('./src/character/chaser.ts'));
+      } catch (error) {
+        fail(error);
+        throw error;
+      }
+
+      const canvas = document.getElementById('view');
+      const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+      renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+      renderer.toneMapping = THREE.NoToneMapping;
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x141a24);
+      scene.fog = new THREE.Fog(0x141a24, 10, 24);
+
+      const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
+      const target = new THREE.Vector3(0, 1.05, 0);
+      const VIEW = { yaw: 2.5, pitch: 0.14, radius: 4.4 };
+      const PRESETS = {
+        threeQuarter: { yaw: 2.5, pitch: 0.14, radius: 4.4 },
+        front: { yaw: Math.PI, pitch: 0.1, radius: 4.2 },
+        side: { yaw: Math.PI / 2, pitch: 0.1, radius: 4.2 },
+      };
+      const query = new URLSearchParams(location.search);
+      const preset = PRESETS[query.get('view')] || PRESETS.threeQuarter;
+      let yaw = preset.yaw;
+      let pitch = preset.pitch;
+      let radius = preset.radius;
+      if (query.get('clean') === '1') document.getElementById('panel').hidden = true;
+
+      scene.add(new THREE.HemisphereLight(0xffffff, 0xffffff, 1.75));
+      const key = new THREE.DirectionalLight(0xffffff, 3.2);
+      key.position.set(-1.8, 3.2, 4.0);
+      scene.add(key);
+      const fill = new THREE.DirectionalLight(0xffffff, 1.5);
+      fill.position.set(1.0, 1.6, 3.6);
+      scene.add(fill);
+      scene.add(new THREE.AmbientLight(0xffffff, 0.95));
+
+      const ground = new THREE.Mesh(
+        new THREE.CircleGeometry(10, 48).rotateX(-Math.PI / 2),
+        new THREE.MeshStandardMaterial({ color: 0x1b2230, roughness: 0.95, metalness: 0 }),
+      );
+      scene.add(ground);
+      const grid = new THREE.GridHelper(14, 28, 0x2d3a4d, 0x222c3a);
+      grid.position.y = 0.002;
+      scene.add(grid);
+
+      const rig = createChaser();
+      scene.add(rig.root);
+
+      let state = 'run';
+      const runBtn = document.getElementById('run');
+      const catchBtn = document.getElementById('catch');
+      const setState = (next) => {
+        state = next;
+        rig.setState(next);
+        runBtn.classList.toggle('on', next === 'run');
+        catchBtn.classList.toggle('on', next === 'catch');
+      };
+      runBtn.addEventListener('click', () => setState('run'));
+      catchBtn.addEventListener('click', () => setState('catch'));
+
+      const speedInput = document.getElementById('speed');
+      const speedVal = document.getElementById('speedVal');
+      const applySpeed = () => {
+        rig.setSpeed(Number(speedInput.value));
+        speedVal.textContent = Number(speedInput.value).toFixed(2);
+      };
+      speedInput.addEventListener('input', applySpeed);
+      applySpeed();
+
+      let dragging = false;
+      let lastX = 0;
+      let lastY = 0;
+      canvas.addEventListener('pointerdown', (event) => {
+        dragging = true; lastX = event.clientX; lastY = event.clientY;
+        canvas.setPointerCapture(event.pointerId);
+      });
+      canvas.addEventListener('pointermove', (event) => {
+        if (!dragging) return;
+        yaw -= (event.clientX - lastX) * 0.008;
+        pitch = Math.max(-0.4, Math.min(1.0, pitch + (event.clientY - lastY) * 0.006));
+        lastX = event.clientX; lastY = event.clientY;
+      });
+      canvas.addEventListener('pointerup', () => { dragging = false; });
+      canvas.addEventListener('wheel', (event) => {
+        event.preventDefault();
+        radius = Math.max(2, Math.min(10, radius * (1 + Math.sign(event.deltaY) * 0.08)));
+      }, { passive: false });
+      canvas.addEventListener('dblclick', () => { yaw = VIEW.yaw; pitch = VIEW.pitch; radius = VIEW.radius; });
+
+      const readout = document.getElementById('readout');
+      const box = new THREE.Box3();
+      const size = new THREE.Vector3();
+      const fmt = (v) => v.toFixed(3);
+      const readoutTick = () => {
+        box.setFromObject(rig.root, true);
+        box.getSize(size);
+        const off = Math.abs(size.y - 2) > 0.05;
+        readout.innerHTML =
+          'state <b>' + state + '</b>' +
+          '<br />bbox W ' + fmt(size.x) + ' × H <span class="' + (off ? 'bad' : '') + '">' + fmt(size.y) +
+          '</span> × D ' + fmt(size.z) +
+          '<br />spec H 2.000' + (off ? ' ← 偏差' : '');
+      };
+
+      const resize = () => {
+        const w = Math.max(1, innerWidth);
+        const h = Math.max(1, innerHeight);
+        renderer.setSize(w, h, false);
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+      };
+      addEventListener('resize', resize);
+      resize();
+
+      document.getElementById('panel').hidden = false;
+      boot.hidden = true;
+
+      const clock = new THREE.Clock();
+      const loop = () => {
+        rig.update(Math.min(clock.getDelta(), 0.05));
+        const cp = Math.cos(pitch);
+        camera.position.set(
+          target.x + radius * cp * Math.sin(yaw),
+          target.y + radius * Math.sin(pitch),
+          target.z + radius * cp * Math.cos(yaw),
+        );
+        camera.lookAt(target);
+        renderer.render(scene, camera);
+        readoutTick();
+        requestAnimationFrame(loop);
+      };
+      loop();
+
+      window.__chaser = { rig, setState, THREE, scene, camera };
+    </script>
+  </body>
+</html>

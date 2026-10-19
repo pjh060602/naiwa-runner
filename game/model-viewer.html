@@ -1,0 +1,45 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>naiwa model</title>
+<style>html,body{margin:0;height:100%;background:#20242c;overflow:hidden}#hud{position:fixed;left:12px;top:12px;color:#ffd93f;font:13px/1.6 system-ui;background:rgba(0,0,0,.55);padding:8px 12px;border-radius:8px}</style>
+</head><body><div id="hud">loading…</div>
+<script type="module">
+import * as THREE from '/node_modules/three/build/three.module.js';
+import { GLTFLoader } from '/node_modules/three/examples/jsm/loaders/GLTFLoader.js';
+const p = new URLSearchParams(location.search);
+const yaw = parseFloat(p.get('yaw') ?? '0') * Math.PI / 180;
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(1.5);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.NoToneMapping;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x20242c);
+const cam = new THREE.PerspectiveCamera(35, innerWidth / innerHeight, 0.01, 100);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x8899aa, 2.0));
+const d1 = new THREE.DirectionalLight(0xffffff, 2.6); d1.position.set(3, 5, 4); scene.add(d1);
+const d2 = new THREE.DirectionalLight(0xffffff, 1.2); d2.position.set(-4, 2, -3); scene.add(d2);
+new GLTFLoader().load('/models/naiwa.glb', (g) => {
+  const o = g.scene;
+  o.rotation.y = yaw;
+  const box = new THREE.Box3().setFromObject(o);
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  o.position.sub(center);
+  const r = Math.max(size.x, size.y, size.z);
+  cam.position.set(0, 0, r * 2.1);
+  cam.lookAt(0, 0, 0);
+  scene.add(o);
+  document.getElementById('hud').textContent =
+    'size ' + size.x.toFixed(2) + ' x ' + size.y.toFixed(2) + ' x ' + size.z.toFixed(2) +
+    '  tris ' + (renderer.info.render.triangles | 0);
+  renderer.render(scene, cam);
+  requestAnimationFrame(() => {
+    document.getElementById('hud').textContent =
+      'size ' + size.x.toFixed(2) + ' x ' + size.y.toFixed(2) + ' x ' + size.z.toFixed(2) +
+      '  tris ' + renderer.info.render.triangles;
+  });
+}, undefined, (e) => { document.getElementById('hud').textContent = 'LOAD FAIL ' + e; });
+function loop(){ renderer.render(scene, cam); requestAnimationFrame(loop); }
+loop();
+</script></body></html>

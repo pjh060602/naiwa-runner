@@ -1,0 +1,462 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>奶蛙 · 角色预览</title>
+    <style>
+      :root { color-scheme: dark; }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; margin: 0; }
+      body {
+        background: #10131a;
+        color: #e9e6dc;
+        font: 13px/1.5 "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+        overflow: hidden;
+      }
+      #stage { position: fixed; inset: 0; }
+      body.compare #stage { left: 50%; }
+      #view { display: block; width: 100%; height: 100%; }
+      #refOverlay {
+        position: absolute; inset: 0; width: 100%; height: 100%;
+        object-fit: contain; opacity: 0.4; pointer-events: none;
+      }
+      #refOverlay[hidden] { display: none; }
+      #refPane {
+        position: fixed; left: 0; top: 0; width: 50%; height: 100%;
+        display: grid; place-items: center; gap: 6px; padding: 10px;
+        background: #0b0e14; border-right: 1px solid #26303e;
+      }
+      #refPane[hidden] { display: none; }
+      #refPane img { max-width: 100%; max-height: 100%; object-fit: contain; }
+      #refPane figcaption { color: #6b7embed; }
+      #panel {
+        position: fixed; top: 16px; left: 16px; width: 250px;
+        padding: 14px; border-radius: 12px;
+        background: rgba(18, 22, 31, 0.9);
+        border: 1px solid rgba(245, 217, 58, 0.22);
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+        backdrop-filter: blur(6px);
+        max-height: calc(100% - 32px); overflow-y: auto;
+      }
+      #panel[hidden] { display: none; }
+      #panel, #hint, #refPane { user-select: none; }
+      h1 { margin: 0 0 2px; font-size: 15px; letter-spacing: 0.04em; }
+      .sub { margin: 0 0 12px; color: #8b93a1; font-size: 11px; }
+      .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+      .grid2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin-top: 8px; }
+      button {
+        font: inherit; color: #e9e6dc; cursor: pointer;
+        background: #1d2430; border: 1px solid #2c3746; border-radius: 8px;
+        padding: 7px 4px; transition: background 0.12s, border-color 0.12s, transform 0.06s;
+      }
+      button:hover { background: #26303e; }
+      button:active { transform: translateY(1px); }
+      button.on { background: #f5d93a; border-color: #f5d93a; color: #221f08; font-weight: 600; }
+      #slide { width: 100%; margin-top: 8px; padding: 9px 4px; border-color: #4a5a2f; background: #232c1a; }
+      #slide.on { background: #f6efd8; border-color: #f6efd8; color: #232c1a; font-weight: 600; }
+      label.row { display: block; margin-top: 12px; color: #9aa3b1; font-size: 11px; }
+      input[type="range"] { width: 100%; margin-top: 4px; accent-color: #f5d93a; }
+      select {
+        width: 100%; margin-top: 6px; padding: 5px; border-radius: 8px;
+        background: #1d2430; color: #e9e6dc; border: 1px solid #2c3746; font: inherit; font-size: 11px;
+      }
+      #readout {
+        margin-top: 12px; padding-top: 10px; border-top: 1px solid #262f3c;
+        font: 11px/1.7 ui-monospace, Consolas, monospace; color: #9aa3b1;
+      }
+      #readout b { color: #f5d93a; font-weight: 600; }
+      #readout .warn { color: #ff8d6b; }
+      #measure { width: 100%; margin-top: 10px; padding: 6px 4px; font-size: 11px; }
+      #measureOut {
+        margin: 8px 0 0; max-height: 170px; overflow: auto; white-space: pre;
+        font: 10px/1.6 ui-monospace, Consolas, monospace; color: #7f8a99;
+      }
+      #hint { position: fixed; right: 16px; bottom: 14px; color: #5c6675; font-size: 11px; }
+      #boot {
+        position: fixed; inset: 0; display: grid; place-items: center;
+        background: #10131a; color: #9aa3b1; font-size: 13px; text-align: center; padding: 24px;
+      }
+      #boot[hidden] { display: none; }
+      #boot.err { color: #ff9c7d; }
+      #boot code { color: #f5d93a; }
+    </style>
+  </head>
+  <body>
+    <div id="stage">
+      <canvas id="view"></canvas>
+      <img id="refOverlay" hidden alt="参考图叠加" />
+    </div>
+
+    <figure id="refPane" hidden><img id="refImg" alt="参考图" /></figure>
+
+    <div id="panel" hidden>
+      <h1>奶蛙 · 角色预览</h1>
+      <p class="sub">src/character/naiwa.ts</p>
+      <div class="grid" id="states">
+        <button data-state="idle">idle</button>
+        <button data-state="run">run</button>
+        <button data-state="jump">jump</button>
+        <button data-state="fall">fall</button>
+        <button data-state="slide">slide</button>
+        <button data-state="hit">hit</button>
+        <button data-state="taunt">taunt</button>
+        <button data-state="startle">startle</button>
+      </div>
+      <button id="slide">长按 · 肚皮滑行</button>
+      <label class="row">speed（跑动频率 <span id="speedVal">1.00</span>）</label>
+      <input id="speed" type="range" min="0" max="1" step="0.01" value="1" />
+      <div class="grid2">
+        <button id="viewFront">正视</button>
+        <button id="viewSide">侧视</button>
+      </div>
+      <button id="viewBack" style="width: 100%; margin-top: 6px">背视（游戏视角）</button>
+      <button id="compare" style="width: 100%; margin-top: 8px">对比模式（参考图左右并排）</button>
+      <select id="refPick">
+        <option value="/refs/proportion_side_01.jpg">比例：立牌侧视</option>
+        <option value="/refs/poses_sheet_01.jpg">结构：2D 多姿势</option>
+        <option value="/refs/proportion_front_03.jpg">正面：好奇蛙摆件</option>
+        <option value="/refs/face_closeup_01.jpg">脸部特写</option>
+      </select>
+      <button id="overlay" style="width: 100%; margin-top: 6px">叠加参考图 40%</button>
+      <button id="silhouette" style="width: 100%; margin-top: 6px">剪影模式（导出轮廓用）</button>
+      <div id="readout"></div>
+      <button id="measure">测量包围盒（六态 + 肚皮滑行）</button>
+      <pre id="measureOut"></pre>
+    </div>
+
+    <div id="hint">拖拽旋转 · 滚轮缩放 · 双击复位</div>
+    <div id="boot">正在加载 three 与奶蛙模块…</div>
+
+    <script type="module">
+      const boot = document.getElementById('boot');
+
+      const fail = (error) => {
+        boot.classList.add('err');
+        boot.hidden = false;
+        boot.innerHTML =
+          '预览页加载失败：' + (error && error.message ? error.message : String(error)) +
+          '<br /><br />本页需要 Vite 开发服务器（.ts 与 node_modules 里的 three）。<br />' +
+          '在 <code>game/</code> 下运行 <code>npm run dev</code> 后访问 <code>/character-preview.html</code>。';
+      };
+
+      let THREE, createNaiwa;
+      try {
+        THREE = await import('three');
+        ({ createNaiwa } = await import('./src/character/naiwa.ts'));
+      } catch (error) {
+        fail(error);
+        throw error;
+      }
+
+      const stage = document.getElementById('stage');
+      const canvas = document.getElementById('view');
+      const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
+      renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+      renderer.toneMapping = THREE.NoToneMapping;
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x141a24);
+      scene.fog = new THREE.Fog(0x141a24, 9, 20);
+
+      const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
+      const target = new THREE.Vector3(0, 0.78, 0);
+      const VIEWS = {
+        threeQuarter: { yaw: 2.56, pitch: 0.16, radius: 3.6 },
+        front: { yaw: Math.PI, pitch: 0.06, radius: 3.3 },
+        side: { yaw: Math.PI / 2, pitch: 0.06, radius: 3.3 },
+        back: { yaw: 0, pitch: 0.06, radius: 3.3 },
+      };
+      let radius = VIEWS.threeQuarter.radius;
+      let yaw = VIEWS.threeQuarter.yaw;
+      let pitch = VIEWS.threeQuarter.pitch;
+      const applyView = (name) => {
+        const view = VIEWS[name];
+        yaw = view.yaw;
+        pitch = view.pitch;
+        radius = view.radius;
+      };
+
+      // 中性白灯：总辐照度调到 ≈π，使正面渲染色 ≈ 材质色（取色验收用）
+      const hemi = new THREE.HemisphereLight(0xffffff, 0xffffff, 1.75);
+      scene.add(hemi);
+      const key = new THREE.DirectionalLight(0xffffff, 3.2);
+      key.position.set(-1.8, 3.2, 4.0);
+      scene.add(key);
+      const fill = new THREE.DirectionalLight(0xffffff, 1.5);
+      fill.position.set(1.0, 1.6, 3.6);
+      scene.add(fill);
+      const rim = new THREE.DirectionalLight(0xffffff, 0.8);
+      rim.position.set(2.0, 2.4, -4.0);
+      scene.add(rim);
+      const ambient = new THREE.AmbientLight(0xffffff, 0.95);
+      scene.add(ambient);
+
+      const ground = new THREE.Mesh(
+        new THREE.CircleGeometry(9, 48).rotateX(-Math.PI / 2),
+        new THREE.MeshStandardMaterial({ color: 0x1b2230, roughness: 0.95, metalness: 0 }),
+      );
+      scene.add(ground);
+      const grid = new THREE.GridHelper(12, 24, 0x2d3a4d, 0x222c3a);
+      grid.position.y = 0.002;
+      scene.add(grid);
+
+      const rig = createNaiwa();
+      scene.add(rig.root);
+
+      // ---- 状态 ----
+      const stateButtons = [...document.querySelectorAll('#states button')];
+      let state = 'idle';
+      const setState = (next) => {
+        state = next;
+        rig.setState(next);
+        for (const button of stateButtons) button.classList.toggle('on', button.dataset.state === next);
+      };
+      for (const button of stateButtons) {
+        button.addEventListener('click', () => setState(button.dataset.state));
+      }
+
+      // ---- 肚皮滑行（长按）----
+      const slideButton = document.getElementById('slide');
+      let belly = false;
+      const pressSlide = (active) => {
+        belly = active;
+        rig.setBellySlide(active);
+        slideButton.classList.toggle('on', active);
+      };
+      slideButton.addEventListener('pointerdown', (event) => {
+        event.preventDefault();
+        slideButton.setPointerCapture(event.pointerId);
+        pressSlide(true);
+      });
+      for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+        slideButton.addEventListener(type, () => pressSlide(false));
+      }
+      slideButton.addEventListener('contextmenu', (event) => event.preventDefault());
+
+      // ---- 速度 ----
+      const speedInput = document.getElementById('speed');
+      const speedVal = document.getElementById('speedVal');
+      const applySpeed = () => {
+        const ratio = Number(speedInput.value);
+        rig.setSpeed(ratio);
+        speedVal.textContent = ratio.toFixed(2);
+      };
+      speedInput.addEventListener('input', applySpeed);
+      applySpeed();
+
+      // ---- 对比模式 ----
+      const refPane = document.getElementById('refPane');
+      const refImg = document.getElementById('refImg');
+      const refOverlay = document.getElementById('refOverlay');
+      const silhouetteButton = document.getElementById('silhouette');
+      const silhouetteMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+      let silhouetteOn = false;
+      const applySilhouette = () => {
+        scene.overrideMaterial = silhouetteOn ? silhouetteMat : null;
+        scene.background = new THREE.Color(silhouetteOn ? 0xffffff : 0x141a24);
+        scene.fog = silhouetteOn ? null : new THREE.Fog(0x141a24, 9, 20);
+        ground.visible = !silhouetteOn;
+        grid.visible = !silhouetteOn;
+        silhouetteButton.classList.toggle('on', silhouetteOn);
+      };
+      silhouetteButton.addEventListener('click', () => { silhouetteOn = !silhouetteOn; applySilhouette(); });
+
+      const compareButton = document.getElementById('compare');
+      const overlayButton = document.getElementById('overlay');
+      const refPick = document.getElementById('refPick');
+      let compareOn = false;
+      let overlayOn = false;
+
+      const syncRefSrc = () => {
+        const src = refPick.value;
+        refImg.src = src;
+        refOverlay.src = src;
+      };
+      refPick.addEventListener('change', syncRefSrc);
+      syncRefSrc();
+
+      const syncLayout = () => {
+        document.body.classList.toggle('compare', compareOn);
+        refPane.hidden = !compareOn;
+        refOverlay.hidden = !overlayOn;
+        compareButton.classList.toggle('on', compareOn);
+        overlayButton.classList.toggle('on', overlayOn);
+        resize();
+      };
+      compareButton.addEventListener('click', () => { compareOn = !compareOn; syncLayout(); });
+      overlayButton.addEventListener('click', () => { overlayOn = !overlayOn; syncLayout(); });
+
+      document.getElementById('viewFront').addEventListener('click', () => applyView('front'));
+      document.getElementById('viewSide').addEventListener('click', () => applyView('side'));
+      document.getElementById('viewBack').addEventListener('click', () => applyView('back'));
+
+      // ---- 相机 ----
+      let dragging = false;
+      let lastX = 0;
+      let lastY = 0;
+      canvas.addEventListener('pointerdown', (event) => {
+        dragging = true;
+        lastX = event.clientX;
+        lastY = event.clientY;
+        canvas.setPointerCapture(event.pointerId);
+      });
+      canvas.addEventListener('pointermove', (event) => {
+        if (!dragging) return;
+        yaw -= (event.clientX - lastX) * 0.008;
+        pitch = Math.max(-0.5, Math.min(1.15, pitch + (event.clientY - lastY) * 0.006));
+        lastX = event.clientX;
+        lastY = event.clientY;
+      });
+      canvas.addEventListener('pointerup', () => { dragging = false; });
+      canvas.addEventListener('wheel', (event) => {
+        event.preventDefault();
+        radius = Math.max(1.6, Math.min(9, radius * (1 + Math.sign(event.deltaY) * 0.08)));
+      }, { passive: false });
+      canvas.addEventListener('dblclick', () => applyView('threeQuarter'));
+
+      // ---- 读数 + 测量 ----
+      const readout = document.getElementById('readout');
+      // 身体主体色实测：世界点 (0,0.80,0) 投影到屏幕，读 21x21 像素块里"非背景"像素的中位色
+      const gl = renderer.getContext();
+      const probe = new THREE.Vector3();
+      const probeBuf = new Uint8Array(21 * 21 * 4);
+      let lastColor = '#------  @-,-';
+      const sampleBodyColor = () => {
+        probe.set(0, 1.31, 0).project(camera);
+        const cx = Math.round((probe.x * 0.5 + 0.5) * renderer.domElement.width);
+        const cy = Math.round((probe.y * 0.5 + 0.5) * renderer.domElement.height);
+        gl.readPixels(cx - 10, cy - 10, 21, 21, gl.RGBA, gl.UNSIGNED_BYTE, probeBuf);
+        const rs = [];
+        const gs = [];
+        const bs = [];
+        for (let i = 0; i < probeBuf.length; i += 4) {
+          const r = probeBuf[i];
+          const g = probeBuf[i + 1];
+          const b = probeBuf[i + 2];
+          if (r + g + b > 210) { rs.push(r); gs.push(g); bs.push(b); }
+        }
+        if (!rs.length) return lastColor;
+        const median = (arr) => arr.sort((a, b) => a - b)[Math.floor(arr.length / 2)];
+        const hex = (v) => v.toString(16).padStart(2, '0');
+        lastColor = '#' + hex(median(rs)) + hex(median(gs)) + hex(median(bs)) + ' @' + cx + ',' + cy;
+        return lastColor;
+      };
+
+      const box = new THREE.Box3();
+      const size = new THREE.Vector3();
+      const SPEC = { w: 0.62, h: 1.5, d: 0.5 };
+      const fmt = (value) => value.toFixed(3);
+      const readoutTick = () => {
+        box.setFromObject(rig.root, true);
+        box.getSize(size);
+        const height = size.y;
+        const overLimit = state === 'slide' && height > 0.9;
+        readout.innerHTML =
+          'state <b>' + state + '</b>' +
+          '<br />bbox W ' + fmt(size.x) + ' × H ' + fmt(height) + ' × D ' + fmt(size.z) +
+          (overLimit ? ' <span class="warn">超 0.9m</span>' : '') +
+          '<br />spec ' + SPEC.w + ' × ' + SPEC.h + ' × ' + SPEC.d +
+          '<br />body <b>' + sampleBodyColor() + '</b>';
+      };
+
+      const measureBtn = document.getElementById('measure');
+      const measureOut = document.getElementById('measureOut');
+      const sample = (nextState, nextBelly) => {
+        rig.setState(nextState);
+        rig.setBellySlide(nextBelly);
+        for (let i = 0; i < 90; i += 1) rig.update(1 / 60);
+        const min = { x: Infinity, y: Infinity, z: Infinity };
+        const max = { x: -Infinity, y: -Infinity, z: -Infinity };
+        for (let i = 0; i < 150; i += 1) {
+          rig.update(1 / 60);
+          box.setFromObject(rig.root, true);
+          box.getSize(size);
+          for (const axis of ['x', 'y', 'z']) {
+            min[axis] = Math.min(min[axis], size[axis]);
+            max[axis] = Math.max(max[axis], size[axis]);
+          }
+        }
+        return { min, max };
+      };
+      const span = (lo, hi) => (hi - lo < 0.0015 ? fmt(hi) : fmt(lo) + '~' + fmt(hi));
+      measureBtn.addEventListener('click', () => {
+        const states = ['idle', 'run', 'jump', 'fall', 'slide', 'hit'];
+        const rows = ['态            宽 W          高 H          深 D'];
+        for (const nextBelly of [false, true]) {
+          for (const nextState of states) {
+            const m = sample(nextState, nextBelly);
+            const label = (nextBelly && nextState === 'idle' ? '肚皮滑行' : nextState).padEnd(12);
+            rows.push(label + span(m.min.x, m.max.x).padEnd(14) + span(m.min.y, m.max.y).padEnd(14) + span(m.min.z, m.max.z));
+          }
+        }
+        rig.setState('idle');
+        rig.setBellySlide(false);
+        for (let i = 0; i < 90; i += 1) rig.update(1 / 60);
+        rig.root.updateMatrixWorld(true);
+        const parts = [];
+        rig.root.traverse((object) => {
+          if (!object.isMesh) return;
+          const partBox = new THREE.Box3().setFromObject(object, true);
+          parts.push({ name: object.name || 'mesh', x: Math.max(-partBox.min.x, partBox.max.x) });
+        });
+        parts.sort((a, b) => b.x - a.x);
+        rows.push('最宽部件 x 半宽：' + parts.slice(0, 4).map((p) => p.name.replace('naiwa.', '') + ' ' + p.x.toFixed(3)).join(' / '));
+        rows.push('规格：0.620 / 1.500 / 0.500（滑行高 ≤ 0.9）');
+        measureOut.textContent = rows.join(String.fromCharCode(10));
+        rig.setState(state);
+        rig.setBellySlide(belly);
+      });
+
+      // ---- 渲染 ----
+      const resize = () => {
+        const width = Math.max(1, stage.clientWidth);
+        const height = Math.max(1, stage.clientHeight);
+        renderer.setSize(width, height, false);
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+      };
+      addEventListener('resize', resize);
+      resize();
+
+      // 截图/演示用的 URL 参数：?clean=1&compare=1&view=front|side&overlay=1&ref=<路径>
+      const params = new URLSearchParams(location.search);
+      if (params.get('ref')) {
+        refPick.value = params.get('ref');
+        syncRefSrc();
+      }
+      if (params.get('view')) applyView(params.get('view'));
+      if (params.get('overlay') === '1') { overlayOn = true; syncLayout(); }
+      if (params.get('compare') === '1') { compareOn = true; syncLayout(); }
+      if (params.get('silhouette') === '1') { silhouetteOn = true; applySilhouette(); }
+      if (params.get('clean') === '1') {
+        document.getElementById('panel').hidden = true;
+        document.getElementById('hint').style.display = 'none';
+      } else {
+        document.getElementById('panel').hidden = false;
+      }
+      document.getElementById('boot').hidden = true;
+      setState('idle');
+
+      const clock = new THREE.Clock();
+      const loop = () => {
+        const dt = Math.min(clock.getDelta(), 0.05);
+        rig.update(dt);
+        const cosPitch = Math.cos(pitch);
+        camera.position.set(
+          target.x + radius * cosPitch * Math.sin(yaw),
+          target.y + radius * Math.sin(pitch),
+          target.z + radius * cosPitch * Math.cos(yaw),
+        );
+        camera.lookAt(target);
+        renderer.render(scene, camera);
+        readoutTick();
+        requestAnimationFrame(loop);
+      };
+      loop();
+
+      window.__naiwa = { rig, setState, applyView, THREE, scene, camera };
+    </script>
+  </body>
+</html>

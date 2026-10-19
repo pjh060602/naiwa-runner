@@ -1,0 +1,721 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>海滨道具 · 预览</title>
+    <style>
+      :root { color-scheme: light; }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; margin: 0; }
+      body {
+        background: #e7eef4;
+        color: #22303c;
+        font: 13px/1.5 "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+        overflow: hidden;
+      }
+      #stage { position: fixed; inset: 0; }
+      #view { display: block; width: 100%; height: 100%; }
+      #labels { position: absolute; inset: 0; pointer-events: none; }
+      .tag {
+        position: absolute; transform: translate(-50%, 0);
+        font: 11px/1.4 ui-monospace, Consolas, monospace; color: #4a5a68;
+        background: rgba(255, 255, 255, 0.72); border: 1px solid rgba(90, 110, 128, 0.28);
+        border-radius: 6px; padding: 2px 6px; white-space: nowrap;
+      }
+      #panel {
+        position: fixed; top: 16px; left: 16px; width: 268px;
+        padding: 14px; border-radius: 12px;
+        background: rgba(255, 255, 255, 0.92);
+        border: 1px solid rgba(90, 110, 128, 0.26);
+        box-shadow: 0 10px 30px rgba(30, 50, 70, 0.14);
+        max-height: calc(100% - 32px); overflow-y: auto;
+      }
+      #panel[hidden] { display: none; }
+      #panel, #caption, #hint { user-select: none; }
+      h1 { margin: 0 0 2px; font-size: 15px; letter-spacing: 0.04em; }
+      .sub { margin: 0 0 10px; color: #7d8b98; font-size: 11px; }
+      .views { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+      button {
+        font: inherit; color: #22303c; cursor: pointer;
+        background: #eef3f7; border: 1px solid #c3d0da; border-radius: 8px;
+        padding: 6px 2px; transition: background 0.12s, border-color 0.12s;
+      }
+      button:hover { background: #e2ebf2; }
+      button.on { background: #2f6f9c; border-color: #2f6f9c; color: #fff; font-weight: 600; }
+      #list { margin-top: 10px; border-top: 1px solid #dde5ec; }
+      .row {
+        display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+        padding: 5px 4px; border-radius: 6px; cursor: pointer;
+        font: 12px/1.5 ui-monospace, Consolas, monospace; color: #37474f;
+      }
+      .row:hover { background: #eaf1f7; }
+      .row.on { background: #dcebf7; }
+      .row b { font-weight: 600; }
+      .row .tri { color: #2f6f9c; }
+      .row .bad { color: #c0392b; }
+      #readout {
+        margin-top: 10px; padding-top: 10px; border-top: 1px solid #dde5ec;
+        font: 11px/1.7 ui-monospace, Consolas, monospace; color: #5d6b78;
+      }
+      #readout b { color: #2f6f9c; }
+      #caption {
+        position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%);
+        display: flex; gap: 18px; align-items: baseline;
+        font: 12px/1.5 ui-monospace, Consolas, monospace; color: #37474f;
+        background: rgba(255, 255, 255, 0.9); border: 1px solid rgba(90, 110, 128, 0.24);
+        border-radius: 8px; padding: 6px 14px;
+      }
+      #caption[hidden] { display: none; }
+      #caption .warn { color: #c0392b; font-weight: 600; }
+      #caption .ok { color: #1f7a4d; }
+      .panelLabel {
+        position: absolute; bottom: 18px; transform: translateX(-50%);
+        font: 12px/1.5 "Microsoft YaHei", "Segoe UI", sans-serif; color: #5d6b78;
+        letter-spacing: 0.08em;
+      }
+      #hint { position: fixed; right: 16px; bottom: 14px; color: #8b98a5; font-size: 11px; }
+      #boot {
+        position: fixed; inset: 0; display: grid; place-items: center;
+        background: #e7eef4; color: #5d6b78; font-size: 13px; text-align: center; padding: 24px;
+      }
+      #boot[hidden] { display: none; }
+      #boot.err { color: #b03a2e; }
+      #boot code { color: #2f6f9c; }
+    </style>
+  </head>
+  <body>
+    <div id="stage">
+      <canvas id="view"></canvas>
+      <div id="labels"></div>
+    </div>
+
+    <div id="panel" hidden>
+      <h1>海滨道具 · 预览</h1>
+      <p class="sub">src/world/props/ ｜ 每件 = 1 个合并几何体（1 draw call）</p>
+      <div class="views">
+        <button data-view="three">45°</button>
+        <button data-view="front">正视</button>
+        <button data-view="side">侧视</button>
+        <button data-view="top">俯视</button>
+      </div>
+      <button id="showAll" style="width: 100%; margin-top: 8px">全部道具（一页看完）</button>
+      <div id="list"></div>
+      <div id="readout"></div>
+    </div>
+
+    <div id="caption" hidden></div>
+    <div id="hint">拖拽旋转 · 滚轮缩放 · 双击复位 · 点道具看单品</div>
+    <div id="boot">正在加载 three 与道具模块…</div>
+
+    <script type="module">
+      const boot = document.getElementById('boot');
+      const fail = (error) => {
+        boot.classList.add('err');
+        boot.hidden = false;
+        boot.innerHTML =
+          '预览页加载失败：' + (error && error.message ? error.message : String(error)) +
+          '<br /><br />本页需要 Vite 开发服务器（.ts 与 node_modules 里的 three）。<br />' +
+          '在 <code>game/</code> 下运行 <code>npm run dev</code> 后访问 <code>/props-preview.html</code>。';
+      };
+
+      let THREE, propsModule, backdropModule;
+      try {
+        THREE = await import('three');
+        propsModule = await import('./src/world/props/index.ts');
+        backdropModule = await import('./src/world/backdrop/index.ts');
+      } catch (error) {
+        fail(error);
+        throw error;
+      }
+
+      // ---- 道具注册表：标签、三角面预算（docs/海滨公园场景规范.md + 任务书）----
+      const INFO = {
+        palmGeometry: { label: '棕榈', budget: 1200, size: '高 5.9m · 杆径 0.17→0.09' },
+        benchGeometry: { label: '长椅', budget: 450, size: '1.6 × 0.55 × 0.85m' },
+        umbrellaGeometry: { label: '遮阳伞', budget: 500, size: '伞面 R1.1m · 净高 1.9m' },
+        lifeguardGeometry: { label: '救生塔', budget: 800, size: '底 2.2 × 2.2m · 高 4.2m' },
+        railingSegmentGeometry: { label: '栏杆段', budget: 250, size: '长 2.4m · 高 1.0m' },
+        loungerGeometry: { label: '躺椅', budget: 350, size: '1.8 × 0.65 × 0.35m' },
+        beachGrassGeometry: { label: '海风草', budget: 180, size: '丛高 0.3–0.5m' },
+        benchObstacleGeometry: { label: '沙滩椅障碍', budget: 300, size: '碰撞盒 1.56 × 0.68 × 0.4m' },
+        bollardObstacleGeometry: { label: '系船柱', budget: 250, size: '碰撞盒 1.7 × 1.56 × 1.8m' },
+        awningBarGeometry: { label: '遮阳棚横杆', budget: 400, size: '碰撞盒 2.44 × 1.32m · 横梁 1.19–1.31m' },
+        signpostGeometry: { label: '路标立柱', budget: 350, size: '碰撞盒 0.4 × 0.4 × 6m' },
+        gullGeometry: { label: '海鸥', budget: 500, size: '碰撞盒 0.6 × 0.84 × 0.52m' },
+        shellGeometry: { label: '贝壳', budget: 60, size: '≈10cm' },
+        bucketGeometry: { label: '沙桶', budget: 60, size: 'Ø20 × 29cm' },
+        sandcastleGeometry: { label: '沙堡', budget: 60, size: '34 × 32cm' },
+        beachBallGeometry: { label: '沙滩球', budget: 60, size: 'Ø17cm（翻倒）' },
+        barrierGeometry: { label: '高门架', budget: 800, size: '2.6 × 0.31 × 2.6m · 净空 1.05m' },
+      };
+      const ITEMS = Object.entries(propsModule)
+        // 大多数导出是已建好的常量；barrierGeometry 是工厂函数，这里统一求值
+        .filter(
+          ([key, value]) =>
+            key.endsWith('Geometry') &&
+            !key.startsWith('create') &&
+            (value instanceof THREE.BufferGeometry || typeof value === 'function'),
+        )
+        .map(([key, value]) => {
+          const geometry = typeof value === 'function' ? value() : value;
+          const info = INFO[key] || { label: key.replace(/Geometry$/, ''), budget: 0, size: '' };
+          const tris = geometry.getAttribute('position').count / 3;
+          geometry.computeBoundingBox();
+          const box = geometry.boundingBox.clone();
+          return { key, label: info.label, budget: info.budget, size: info.size, tris, box, geometry };
+        });
+
+      // ---- 渲染器 / 场景 / 灯光（对齐 game.ts：ACES + 曝光 0.95）----
+      const canvas = document.getElementById('view');
+      const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
+      renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 0.95;
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0xe7eef4);
+      const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.88, metalness: 0 });
+      scene.add(new THREE.HemisphereLight(0xcfe9ff, 0xe8d9b5, 1.2));
+      const sun = new THREE.DirectionalLight(0xfff6e0, 2.9);
+      sun.position.set(0.35 * 60, 0.75 * 60, 0.45 * 60);
+      scene.add(sun);
+      const fill = new THREE.DirectionalLight(0xcfe6ff, 0.55);
+      fill.position.set(-0.45 * 40, 0.4 * 40, -0.36 * 40);
+      scene.add(fill);
+
+      const ground = new THREE.Mesh(
+        new THREE.CircleGeometry(60, 64).rotateX(-Math.PI / 2),
+        new THREE.MeshStandardMaterial({ color: 0xd3dce4, roughness: 0.98, metalness: 0 }),
+      );
+      scene.add(ground);
+      const grid = new THREE.GridHelper(60, 60, 0xbcc9d4, 0xcbd6e0);
+      grid.position.y = 0.002;
+      scene.add(grid);
+
+      const shadowMaterial = new THREE.MeshBasicMaterial({ color: 0x4a5865, transparent: true, opacity: 0.12, depthWrite: false });
+      const shadowGeometry = new THREE.CircleGeometry(1, 20).rotateX(-Math.PI / 2);
+
+      // ---- 模式：all / 单品 / 三视图海报 ----
+      const params = new URLSearchParams(location.search);
+      const wantItem = params.get('item');
+      const sheet = params.get('sheet') === '1';
+      const backdropMode = params.get('backdrop') === '1';
+      const current = wantItem ? ITEMS.find((i) => i.key === wantItem) || null : null;
+
+      const root = new THREE.Group();
+      scene.add(root);
+      const labels = document.getElementById('labels');
+      const captionEl = document.getElementById('caption');
+      const panelEl = document.getElementById('panel');
+      const hintEl = document.getElementById('hint');
+      const listEl = document.getElementById('list');
+      const readoutEl = document.getElementById('readout');
+
+      const placed = [];
+      const build = (items, sheetMode, withTags = true) => {
+        for (const child of [...root.children]) root.remove(child);
+        for (const child of [...labels.children]) labels.removeChild(child);
+        placed.length = 0;
+        if (sheetMode) {
+          const item = items[0];
+          const mesh = new THREE.Mesh(item.geometry, material);
+          root.add(mesh);
+          const shadow = new THREE.Mesh(shadowGeometry, shadowMaterial);
+          const size = item.box.getSize(new THREE.Vector3());
+          shadow.scale.set(Math.max(size.x, size.z) * 0.55, 1, Math.max(size.x, size.z) * 0.55);
+          shadow.position.y = 0.004;
+          root.add(shadow);
+          placed.push({ item, mesh });
+          return;
+        }
+        // 网格铺开：宽的先放，行/列间距按各自的包围盒自动算
+        const gap = 1.2;
+        const columns = items.length > 6 ? 4 : 3;
+        const ordered = [...items].sort((a, b) => (b.box.max.x - b.box.min.x) - (a.box.max.x - a.box.min.x));
+        const rows = Math.ceil(ordered.length / columns);
+        const colWidth = [];
+        const rowDepth = [];
+        for (let c = 0; c < columns; c += 1) {
+          colWidth[c] = 0.8;
+          for (let r = 0; r < rows; r += 1) {
+            const item = ordered[r * columns + c];
+            if (item) colWidth[c] = Math.max(colWidth[c], item.box.max.x - item.box.min.x);
+          }
+        }
+        for (let r = 0; r < rows; r += 1) {
+          rowDepth[r] = 0.8;
+          for (let c = 0; c < columns; c += 1) {
+            const item = ordered[r * columns + c];
+            if (item) rowDepth[r] = Math.max(rowDepth[r], item.box.max.z - item.box.min.z);
+          }
+        }
+        const totalWidth = colWidth.reduce((acc, w) => acc + w, 0) + gap * (columns - 1);
+        const totalDepth = rowDepth.reduce((acc, d) => acc + d, 0) + gap * (rows - 1);
+        let cursorX = -totalWidth / 2;
+        let cursorZ = totalDepth / 2;
+        const colX = [];
+        for (let c = 0; c < columns; c += 1) {
+          colX[c] = cursorX + colWidth[c] / 2;
+          cursorX += colWidth[c] + gap;
+        }
+        const rowZ = [];
+        for (let r = 0; r < rows; r += 1) {
+          rowZ[r] = cursorZ - rowDepth[r] / 2;
+          cursorZ -= rowDepth[r] + gap;
+        }
+        for (let i = 0; i < ordered.length; i += 1) {
+          const item = ordered[i];
+          const column = i % columns;
+          const row = Math.floor(i / columns);
+          const centerX = colX[column] - (item.box.max.x + item.box.min.x) / 2;
+          const centerZ = rowZ[row] - (item.box.max.z + item.box.min.z) / 2;
+          const mesh = new THREE.Mesh(item.geometry, material);
+          mesh.position.set(centerX, 0, centerZ);
+          root.add(mesh);
+          const shadow = new THREE.Mesh(shadowGeometry, shadowMaterial);
+          const size = item.box.getSize(new THREE.Vector3());
+          shadow.scale.set(Math.max(size.x, size.z) * 0.5, 1, Math.max(size.x, 0.6) * 0.5);
+          shadow.position.set(centerX, 0.004, centerZ);
+          root.add(shadow);
+          const tag = withTags ? document.createElement('div') : null;
+          if (tag) {
+            tag.className = 'tag';
+            tag.textContent = item.label + ' · ' + item.tris;
+            labels.appendChild(tag);
+          }
+          placed.push({ item, mesh, tag });
+        }
+      };
+
+      // ---- 相机控制 ----
+      const VIEWS = { three: { yaw: 0.72, pitch: 0.2 }, front: { yaw: 0, pitch: 0.06 }, side: { yaw: Math.PI / 2, pitch: 0.06 }, top: { yaw: 0, pitch: 1.32 } };
+      let view = params.get('view') || 'three';
+      let yaw = (VIEWS[view] || VIEWS.three).yaw;
+      let pitch = (VIEWS[view] || VIEWS.three).pitch;
+      let radius = 10;
+      const target = new THREE.Vector3(0, 1, 0);
+      const camera = new THREE.PerspectiveCamera(38, 1, 0.05, 400);
+
+      const boxOf = (entries) => {
+        const box = new THREE.Box3();
+        for (const entry of entries) {
+          const b = entry.item.box.clone().translate(new THREE.Vector3(entry.mesh.position.x, entry.mesh.position.y, entry.mesh.position.z));
+          box.union(b);
+        }
+        return box;
+      };
+
+      const frame = () => {
+        const box = boxOf(placed);
+        const size = box.getSize(new THREE.Vector3());
+        box.getCenter(target);
+        target.y = Math.max(target.y - size.y * 0.04, size.y * 0.44);
+        // 左侧有信息面板：整排往右挪一点，别让第一件被面板压住
+        if (placed.length > 1) target.x -= size.x * 0.08;
+        const vFov = THREE.MathUtils.degToRad(camera.fov);
+        const hFov = 2 * Math.atan(Math.tan(vFov / 2) * camera.aspect);
+        // 斜视角下水平方向还要算上进深，否则一排道具会被裁掉
+        const margin = placed.length > 1 ? 1.42 : 1.12;
+        const halfWidth = 0.5 * Math.max(size.x, size.z * 1.3) + 0.15;
+        const halfHeight = 0.5 * size.y + 0.2;
+        radius = Math.max(halfHeight / Math.tan(vFov / 2), halfWidth / Math.tan(hFov / 2)) * margin;
+      };
+
+      const placeCamera = () => {
+        const cosPitch = Math.cos(pitch);
+        camera.position.set(
+          target.x + radius * cosPitch * Math.sin(yaw),
+          target.y + radius * Math.sin(pitch),
+          target.z + radius * cosPitch * Math.cos(yaw),
+        );
+        camera.lookAt(target);
+      };
+
+      // ---- 面板 / 海报模式 ----
+      const updateChrome = () => {
+        if (sheet) {
+          panelEl.hidden = true;
+          hintEl.hidden = true;
+          captionEl.hidden = false;
+          const item = current;
+          const over = item.tris > item.budget;
+          captionEl.innerHTML =
+            '<span>' + item.label + '</span><span>' + item.size + '</span>' +
+            '<span>' + item.tris + ' tris / ' + item.budget + ' 预算 ' +
+            (over ? '<span class="warn">超预算</span>' : '<span class="ok">在预算内</span>') + '</span>';
+          const w = (item.box.max.x - item.box.min.x).toFixed(2);
+          const h = (item.box.max.y - item.box.min.y).toFixed(2);
+          const d = (item.box.max.z - item.box.min.z).toFixed(2);
+          for (const [i, text] of ['正视图', '侧视图', '45°'].entries()) {
+            const el = document.createElement('div');
+            el.className = 'panelLabel';
+            el.style.left = (100 / 3) * (i + 0.5) + '%';
+            el.textContent = text;
+            labels.appendChild(el);
+          }
+          const dim = document.createElement('div');
+          dim.className = 'tag';
+          dim.style.left = '50%';
+          dim.style.top = '8px';
+          dim.style.transform = 'translate(-50%, 0)';
+          dim.textContent = '包围盒 ' + w + ' × ' + h + ' × ' + d + ' m';
+          labels.appendChild(dim);
+          return;
+        }
+        panelEl.hidden = false;
+        hintEl.hidden = false;
+        captionEl.hidden = true;
+        if (current) {
+          captionEl.hidden = false;
+          const over = current.tris > current.budget;
+          captionEl.innerHTML =
+            '<span>' + current.label + '</span><span>' + current.size + '</span>' +
+            '<span>' + current.tris + ' tris / ' + current.budget + ' 预算 ' +
+            (over ? '<span class="warn">超预算</span>' : '<span class="ok">在预算内</span>') + '</span>';
+        }
+      };
+
+      const rowEls = [];
+      for (const item of ITEMS) {
+        const row = document.createElement('div');
+        row.className = 'row';
+        const over = item.tris > item.budget;
+        row.innerHTML = '<span><b>' + item.label + '</b> <span style="color:#9aa8b4">' + item.key.replace('Geometry', '') + '</span></span>' +
+          '<span class="tri' + (over ? ' bad' : '') + '">' + item.tris + '/' + item.budget + '</span>';
+        row.addEventListener('click', () => {
+          location.search = '?item=' + item.key + '&view=' + view;
+        });
+        listEl.appendChild(row);
+        rowEls.push({ row, item });
+      }
+
+      const summary = () => {
+        const total = ITEMS.reduce((acc, item) => acc + item.tris, 0);
+        const over = ITEMS.filter((item) => item.tris > item.budget);
+        readoutEl.innerHTML =
+          '道具 <b>' + ITEMS.length + '</b> 种 ｜ 合计 <b>' + total + '</b> tris' +
+          (over.length ? '<br><span style="color:#c0392b">超预算：' + over.map((i) => i.label).join('、') + '</span>' : '<br>全部在三角面预算内');
+      };
+      summary();
+
+      document.getElementById('showAll').addEventListener('click', () => {
+        location.search = '';
+      });
+      for (const button of document.querySelectorAll('[data-view]')) {
+        button.addEventListener('click', () => {
+          view = button.dataset.view;
+          yaw = VIEWS[view].yaw;
+          pitch = VIEWS[view].pitch;
+          frame();
+          for (const other of document.querySelectorAll('[data-view]')) other.classList.toggle('on', other === button);
+          const url = new URL(location.href);
+          url.searchParams.set('view', view);
+          history.replaceState(null, '', url);
+        });
+      }
+      for (const button of document.querySelectorAll('[data-view]')) button.classList.toggle('on', button.dataset.view === view);
+
+      // ---- 尺寸 ----
+      const resize = () => {
+        const width = innerWidth;
+        const height = innerHeight;
+        renderer.setSize(width, height, false);
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+      };
+      addEventListener('resize', () => {
+        resize();
+        if (backdropMode) return;
+        frame();
+        placeCamera();
+      });
+
+      // ---- 交互：拖拽旋转 / 滚轮缩放 / 双击复位 / 点击选中 ----
+      let dragging = false;
+      let lastX = 0;
+      let lastY = 0;
+      canvas.addEventListener('pointerdown', (event) => {
+        dragging = true;
+        lastX = event.clientX;
+        lastY = event.clientY;
+      });
+      addEventListener('pointerup', () => {
+        dragging = false;
+      });
+      addEventListener('pointermove', (event) => {
+        if (!dragging || sheet) return;
+        yaw -= (event.clientX - lastX) * 0.006;
+        pitch = Math.max(-0.25, Math.min(1.45, pitch + (event.clientY - lastY) * 0.006));
+        lastX = event.clientX;
+        lastY = event.clientY;
+        placeCamera();
+      });
+      canvas.addEventListener('wheel', (event) => {
+        if (sheet) return;
+        radius *= 1 + Math.sign(event.deltaY) * 0.08;
+        placeCamera();
+        event.preventDefault();
+      }, { passive: false });
+      canvas.addEventListener('dblclick', () => {
+        if (sheet) return;
+        yaw = VIEWS[view].yaw;
+        pitch = VIEWS[view].pitch;
+        frame();
+        placeCamera();
+      });
+
+      const raycaster = new THREE.Raycaster();
+      let downX = 0;
+      let downY = 0;
+      canvas.addEventListener('pointerdown', (event) => {
+        downX = event.clientX;
+        downY = event.clientY;
+      });
+      canvas.addEventListener('pointerup', (event) => {
+        if (sheet || current || Math.hypot(event.clientX - downX, event.clientY - downY) > 4) return;
+        const rect = canvas.getBoundingClientRect();
+        raycaster.setFromCamera(
+          new THREE.Vector2(((event.clientX - rect.left) / rect.width) * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1),
+          camera,
+        );
+        const hit = raycaster.intersectObjects(placed.map((entry) => entry.mesh))[0];
+        if (!hit) return;
+        const entry = placed.find((candidate) => candidate.mesh === hit.object);
+        if (entry) location.search = '?item=' + entry.item.key + '&view=' + view;
+      });
+
+      // ---- 大背景模式：海平线 / 海面 / 远岛 / 云 ----
+      if (backdropMode) {
+        ground.visible = false;
+        grid.visible = false;
+        scene.background = new THREE.Color(0xdcefff);
+        scene.fog = new THREE.Fog(0xdcefff, 40, 280);
+        panelEl.hidden = true;
+        hintEl.hidden = true;
+
+        // 模拟 track.ts 的步道 / 沙滩 / 草地，只为看背景与场景的关系
+        const road = new THREE.Mesh(
+          new THREE.BoxGeometry(7.9, 0.24, 260),
+          new THREE.MeshStandardMaterial({ color: 0xd5cdbb, roughness: 0.9, metalness: 0 }),
+        );
+        road.position.set(0, -0.12, -100);
+        scene.add(road);
+        const sand = new THREE.Mesh(
+          new THREE.BoxGeometry(5, 0.2, 260),
+          new THREE.MeshStandardMaterial({ color: 0xe8d9b5, roughness: 1, metalness: 0 }),
+        );
+        sand.position.set(7.15, -0.07, -100);
+        scene.add(sand);
+
+        // 内侧草地（和 track.ts 的草带同尺寸），棕榈才有立足处
+        const grassStrip = new THREE.Mesh(
+          new THREE.BoxGeometry(30, 0.2, 260),
+          new THREE.MeshStandardMaterial({ color: 0x7fa85c, roughness: 0.95, metalness: 0 }),
+        );
+        grassStrip.position.set(-19, -0.07, -100);
+        scene.add(grassStrip);
+
+        const backdrop = new backdropModule.Backdrop({ side: 1, shoreX: 9.65 });
+        scene.add(backdrop.group);
+
+        // ?props=1：把道具按游戏里的排布摆进去，看「海 + 沙 + 棕榈 + 栏杆」同框的比例
+        if (params.get('props') === '1') {
+          const add = (name, x, z, yaw, y = 0) => {
+            const geometry = propsModule[name];
+            if (!geometry) return;
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.position.set(x, y, z);
+            mesh.rotation.y = yaw;
+            scene.add(mesh);
+          };
+          // 海堤栏杆：沿 z 每 2.4m 一段，绕 y 转 90°
+          for (let i = 0; i < 26; i += 1) add('railingSegmentGeometry', 4.5, 8 - i * 2.4, Math.PI / 2, 0.03);
+          // 棕榈：只种在人行道内侧，稀疏
+          for (const [x, z, yaw] of [
+            [-6.6, 3, 0.6],
+            [-7.3, -21, 2.1],
+            [-6.4, -46, 4.2],
+          ]) add('palmGeometry', x, z, yaw, 0.05);
+          // 长椅：面向步道
+          add('benchGeometry', -5.5, -12, Math.PI / 2);
+          // 沙滩：伞 + 躺椅 + 草 + 小物件
+          add('umbrellaGeometry', 7.5, -17, 0.3, 0.03);
+          add('loungerGeometry', 6.1, -14.6, Math.PI / 2 + 0.25, 0.03);
+          for (const [x, z, yaw] of [
+            [4.9, 1.5, 0.4],
+            [9.0, -6, 1.7],
+            [4.8, -20, 3.1],
+            [9.2, -31, 5.2],
+            [5.0, -41, 2.4],
+          ]) add('beachGrassGeometry', x, z, yaw, 0.04);
+          add('bucketGeometry', 8.2, -9.4, 0.4, 0.03);
+          add('sandcastleGeometry', 8.9, -11.4, 0.2, 0.03);
+          add('shellGeometry', 5.6, -5.6, 1.1, 0.04);
+          add('beachBallGeometry', 9.1, -13.6, 0.8, 0.03);
+        }
+
+        // ?obstacles=1：五种障碍按游戏里的车道摆到跑道上，专看「游戏机位读不读得出来」
+        if (params.get('obstacles') === '1') {
+          const lineup = [
+            ['gullGeometry', 0, -7],
+            ['benchObstacleGeometry', -2.6, -14],
+            ['bollardObstacleGeometry', 2.6, -21],
+            ['signpostGeometry', -2.6, -28],
+            ['awningBarGeometry', 0, -35],
+          ];
+          for (const [name, x, z] of lineup) {
+            const geometry = propsModule[name];
+            if (!geometry) continue;
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.position.set(x, 0, z);
+            scene.add(mesh);
+          }
+        }
+
+        const VIEWS_BG = {
+          game: { pos: [0, 2.2, 4.2], look: [0, 1.15, -3], fov: 62 },
+          sea: { pos: [2.5, 1.7, 1.5], look: [26, 0.6, -26], fov: 55 },
+          islands: { pos: [0, 3.2, 0], look: [30, 1.4, -140], fov: 45 },
+          sky: { pos: [0, 2.2, 4.2], look: [-45, 52, -70], fov: 62 },
+          wide: { pos: [0, 16, 26], look: [16, 0.4, -60], fov: 55 },
+        };
+        let bgView = VIEWS_BG[params.get('view') || 'game'] || VIEWS_BG.game;
+        // 调试用：?cam=x,y,z&look=x,y,z 直接给机位
+        const camParam = params.get('cam');
+        const lookParam = params.get('look');
+        if (camParam && lookParam) {
+          const parse = (text) => text.split(',').map((entry) => Number(entry));
+          bgView = { pos: parse(camParam), look: parse(lookParam), fov: Number(params.get('fov') || 55) };
+        }
+        camera.fov = bgView.fov;
+        camera.near = 0.1;
+        camera.far = 420;
+        camera.position.set(bgView.pos[0], bgView.pos[1], bgView.pos[2]);
+        camera.lookAt(bgView.look[0], bgView.look[1], bgView.look[2]);
+        resize();
+        captionEl.hidden = false;
+        captionEl.innerHTML =
+          '<span>大背景 · backdrop</span><span>穹顶跟随玩家 x/z · 海面渐变 + 波纹带 + 远岛 + 两侧扁云</span>' +
+          '<span>3706 tris / 5 draw call</span>';
+        if (params.get('debug') === '2') {
+          // 给每层刷高饱和色，一眼看清哪一层盖住了画面
+          const layers = backdrop.group.children;
+          const tint = [0xff00ff, 0xff0000, 0xffff00, 0x00ffff, 0x0000ff];
+          layers.forEach((child, index) => {
+            child.traverse((object) => {
+              const mesh = object;
+              if (!mesh.isMesh) return;
+              const material = mesh.material;
+              material.vertexColors = false;
+              material.color = new THREE.Color(tint[index % tint.length]);
+              material.needsUpdate = true;
+            });
+          });
+          road.material.color.set(0x00ff00);
+          sand.material.color.set(0x0000ff);
+        }
+        if (params.get('debug') === '1') {
+          const lines = [];
+          scene.traverse((object) => {
+            const mesh = object;
+            if (!mesh.isMesh) return;
+            const geometry = mesh.geometry;
+            geometry.computeBoundingBox();
+            const box = geometry.boundingBox.clone().applyMatrix4(mesh.matrixWorld);
+            const size = box.getSize(new THREE.Vector3());
+            const material = mesh.material;
+            lines.push(
+              (mesh.name || mesh.type) + ' ' +
+                (mesh instanceof THREE.InstancedMesh ? 'x' + mesh.count : '') +
+                ' size=' + size.x.toFixed(0) + 'x' + size.y.toFixed(0) + 'x' + size.z.toFixed(0) +
+                ' vertexColors=' + (material.vertexColors ? 'y' : 'n') +
+                ' color=#' + (material.color ? material.color.getHexString() : '-') +
+                ' visible=' + mesh.visible,
+            );
+          });
+          captionEl.innerHTML = '<span style="white-space:pre;text-align:left">' + lines.join('<br>') + '</span>';
+        }
+        const bgClock = new THREE.Clock();
+        const bgLoop = () => {
+          backdrop.update(bgClock.getDelta(), 0, 0);
+          renderer.render(scene, camera);
+          requestAnimationFrame(bgLoop);
+        };
+        bgLoop();
+      } else if (sheet) {
+        build([current], true);
+        resize();
+        frame();
+        placeCamera();
+        updateChrome();
+        const panelAspect = camera.aspect / 3;
+        const renderLoop = () => {
+          const width = innerWidth;
+          const height = innerHeight;
+          const panelWidth = width / 3;
+          renderer.setScissorTest(true);
+          const views = [
+            { yaw: 0, pitch: 0.02 },
+            { yaw: Math.PI / 2, pitch: 0.02 },
+            { yaw: 0.72, pitch: 0.22 },
+          ];
+          for (let i = 0; i < 3; i += 1) {
+            camera.aspect = panelAspect;
+            camera.updateProjectionMatrix();
+            yaw = views[i].yaw;
+            pitch = views[i].pitch;
+            frame();
+            placeCamera();
+            renderer.setViewport(i * panelWidth, 0, panelWidth, height);
+            renderer.setScissor(i * panelWidth, 0, panelWidth, height);
+            renderer.render(scene, camera);
+          }
+          requestAnimationFrame(renderLoop);
+        };
+        renderLoop();
+      } else if (current) {
+        build([current], false, false);
+        resize();
+        frame();
+        placeCamera();
+        updateChrome();
+        const renderLoop = () => {
+          placeCamera();
+          renderer.render(scene, camera);
+          requestAnimationFrame(renderLoop);
+        };
+        renderLoop();
+      } else {
+        build(ITEMS, false);
+        resize();
+        frame();
+        placeCamera();
+        updateChrome();
+        const v = new THREE.Vector3();
+        const renderLoop = () => {
+          if (dragging) placeCamera();
+          renderer.render(scene, camera);
+          for (const entry of placed) {
+            if (!entry.tag) continue;
+            const size = entry.item.box.getSize(new THREE.Vector3());
+            v.set(
+              entry.mesh.position.x,
+              entry.item.box.max.y + size.y * 0.08,
+              entry.mesh.position.z + entry.item.box.max.z * 0.5 + 0.2,
+            );
+            v.project(camera);
+            entry.tag.style.left = ((v.x * 0.5 + 0.5) * innerWidth) + 'px';
+            entry.tag.style.top = ((-v.y * 0.5 + 0.5) * innerHeight) + 'px';
+          }
+          requestAnimationFrame(renderLoop);
+        };
+        renderLoop();
+      }
+
+      boot.hidden = true;
+      console.log('[props-preview] ' + ITEMS.map((item) => item.key + '=' + item.tris).join(' '));
+    </script>
+  </body>
+</html>

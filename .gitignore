@@ -1,0 +1,15 @@
+node_modules/
+game/node_modules/
+game/dist/
+.tmp/
+recovery/
+shots/
+
+# 发布仓库里不需要的本地产物 / 素材库
+.venv-ml/
+/refs/
+/frames/
+/scout/
+/models/
+/*.mp4
+/*.png

@@ -1,0 +1,462 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <link rel="preload" as="image" href="/models/naiwa_front_tex.png" />
+    <link rel="preload" as="image" href="/models/naiwa_laugh_tex.png" />
+
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='4' fill='%23F5D93A'/%3E%3C/svg%3E"
+    />
+    <title>奶蛙快跑</title>
+
+    <!-- 首帧关键样式：与 style.css 保持一致，避免样式表加载前闪现无样式界面 -->
+    <style id="boot-critical">
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: linear-gradient(168deg, #10426c 0%, #15517f 34%, #ef7d4d 72%, #ffb85c 100%);
+        color: #f2f4f8;
+        font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      #app {
+        position: fixed;
+        inset: 0;
+        z-index: 0;
+      }
+
+      #app canvas {
+        display: block;
+        touch-action: none;
+      }
+
+      #hud {
+        position: fixed;
+        top: max(14px, env(safe-area-inset-top));
+        left: max(16px, env(safe-area-inset-left));
+        z-index: 20;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        width: min(236px, calc(100vw - 32px));
+        padding: 12px 16px;
+        border-radius: 16px;
+        background: rgba(10, 16, 24, 0.55);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        backdrop-filter: blur(14px) saturate(130%);
+        -webkit-backdrop-filter: blur(14px) saturate(130%);
+        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+        font-variant-numeric: tabular-nums;
+        pointer-events: none;
+      }
+
+      .hud-row {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+      }
+
+      .hud-label {
+        font-size: 12px;
+        letter-spacing: 0.1em;
+        color: #cdd7e5;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+      }
+
+      .hud-value {
+        font-size: 20px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        color: #ffd93f;
+        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+        font-feature-settings: 'tnum' 1;
+      }
+
+      .hud-state {
+        margin-top: 2px;
+        font-size: 12px;
+        letter-spacing: 0.08em;
+        color: #ff8fc4;
+        min-height: 16px;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+      }
+
+      #hud-pause {
+        position: fixed;
+        top: max(14px, env(safe-area-inset-top));
+        right: max(16px, env(safe-area-inset-right));
+        z-index: 21;
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        background: rgba(10, 16, 24, 0.6);
+        color: #ffd93f;
+        font-size: 18px;
+        line-height: 1;
+        cursor: pointer;
+        pointer-events: auto;
+        backdrop-filter: blur(12px) saturate(130%);
+        -webkit-backdrop-filter: blur(12px) saturate(130%);
+        box-shadow: 0 8px 22px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+      }
+
+      .hud-boost.hidden {
+        display: none;
+      }
+
+      #fade {
+        position: fixed;
+        inset: 0;
+        background: #000;
+        opacity: 0;
+        pointer-events: none;
+        z-index: 5;
+      }
+
+      #skip-hint {
+        position: fixed;
+        right: max(16px, env(safe-area-inset-right));
+        bottom: max(14px, env(safe-area-inset-bottom));
+        padding: 8px 14px;
+        border-radius: 999px;
+        font-size: 12px;
+        letter-spacing: 0.06em;
+        color: #cdd7e5;
+        background: rgba(8, 11, 16, 0.72);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        pointer-events: none;
+        z-index: 6;
+      }
+
+      #skip-hint.hidden {
+        display: none;
+      }
+
+      #overlay.hidden {
+        display: none;
+      }
+
+      #menu {
+        position: fixed;
+        inset: 0;
+        z-index: 30;
+        display: grid;
+        place-items: center;
+        padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
+        background: radial-gradient(circle at 50% 30%, rgba(16, 28, 44, 0.14), rgba(6, 10, 18, 0.34));
+        backdrop-filter: blur(3px);
+        -webkit-backdrop-filter: blur(3px);
+      }
+
+      #menu.hidden {
+        display: none;
+      }
+
+      body.loading #menu {
+        opacity: 0.85;
+      }
+
+      body.loading #menu button {
+        pointer-events: none;
+      }
+
+      .menu-panel {
+        width: min(460px, calc(100vw - 32px));
+        max-height: min(88dvh, calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 32px));
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        padding: 24px;
+        border-radius: 24px;
+        background: rgba(14, 22, 34, 0.5);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        backdrop-filter: blur(18px) saturate(140%);
+        -webkit-backdrop-filter: blur(18px) saturate(140%);
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45), 0 8px 24px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+        text-align: center;
+        color: #eaf2fb;
+      }
+
+      .menu-panel.hidden {
+        display: none;
+      }
+
+      .menu-title {
+        margin: 0 0 4px;
+        font-size: clamp(34px, 9vw, 52px);
+        letter-spacing: 8px;
+        color: #ffd95e;
+        text-shadow: 0 2px 0 rgba(0, 0, 0, 0.35), 0 10px 28px rgba(255, 170, 60, 0.28);
+      }
+
+      .menu-sub {
+        margin: 0 0 24px;
+        font-size: 13px;
+        color: rgba(214, 228, 242, 0.58);
+        letter-spacing: 2px;
+      }
+
+      .menu-buttons {
+        display: grid;
+        gap: 12px;
+        margin-bottom: 20px;
+      }
+
+      .menu-button {
+        min-height: 48px;
+        padding: 12px 18px;
+        font-size: 16px;
+        font-family: inherit;
+        color: #eaf2fb;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 14px;
+        cursor: pointer;
+      }
+
+      .menu-button.primary {
+        background: linear-gradient(135deg, #ffb85c 0%, #ffd95e 55%, #ffe9a0 100%);
+        color: #2a1c06;
+        font-weight: 700;
+        border-color: rgba(255, 236, 180, 0.65);
+        box-shadow: 0 10px 26px rgba(255, 170, 60, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+      }
+
+      #menu-difficulty,
+      .diff-row {
+        display: flex;
+        gap: 6px;
+        margin: 0 0 20px;
+        padding: 6px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+      }
+
+      .diff-button {
+        flex: 1;
+        min-height: 44px;
+        padding: 0 12px;
+        font-size: 14px;
+        font-family: inherit;
+        color: #cdd9e6;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid transparent;
+        border-radius: 999px;
+        cursor: pointer;
+      }
+
+      /* 按键引导两栏（与 style.css .guide 一致，首帧即最终态） */
+      #menu-guide {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        margin: 0 0 8px;
+        padding: 16px;
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        text-align: left;
+      }
+
+      .guide-col {
+        min-width: 0;
+      }
+
+      .guide-title {
+        margin: 0 0 8px;
+        font-size: 12px;
+        letter-spacing: 2px;
+        color: rgba(255, 217, 94, 0.92);
+        text-align: center;
+      }
+
+      .guide-list {
+        list-style: none;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin: 0;
+        padding: 0;
+      }
+
+      .guide-list li {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        font-size: 12px;
+        line-height: 1.6;
+        color: rgba(214, 226, 240, 0.74);
+      }
+
+      .guide-key {
+        flex: none;
+        padding: 2px 6px;
+        border-radius: 6px;
+        font-size: 11px;
+        font-weight: 700;
+        color: #ffe9a8;
+        background: rgba(255, 217, 94, 0.14);
+        border: 1px solid rgba(255, 217, 94, 0.3);
+        white-space: nowrap;
+      }
+
+      #guide-toggle {
+        display: none;
+        width: 100%;
+        margin: 0 0 12px;
+      }
+
+      /* 矮视口折叠规则（镜像 style.css @media (max-height: 700px)） */
+      @media (max-height: 700px) {
+        #guide-toggle {
+          display: block;
+        }
+
+        #menu-guide {
+          display: none;
+        }
+
+        #menu-main.guide-open #menu-guide {
+          display: grid;
+        }
+
+        #menu-main.guide-open {
+          -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 calc(100% - 32px), transparent 100%);
+          mask-image: linear-gradient(to bottom, #000 0%, #000 calc(100% - 32px), transparent 100%);
+        }
+      }
+    </style>
+  </head>
+  <body class="menu-open loading">
+    <div id="app"></div>
+
+    <!-- 海滨日落氛围层：仅菜单/暂停打开时由 body.menu-open 显示，纯装饰不拦截事件 -->
+    <div id="ambient" aria-hidden="true">
+      <div class="ambient-sun"></div>
+      <div class="ambient-sea"></div>
+      <div class="ambient-vignette"></div>
+    </div>
+
+    <div id="hud">
+      <div class="hud-row"><span class="hud-label">距离</span><span id="hud-distance" class="hud-value">0 m</span></div>
+      <div class="hud-row"><span class="hud-label">速度</span><span id="hud-speed" class="hud-value">14.0 m/s</span></div>
+      <div class="hud-row"><span class="hud-label">奶瓶</span><span id="hud-bottles" class="hud-value">0 / 20</span></div>
+      <div class="hud-row"><span class="hud-label">追兵</span><span id="hud-chase-value" class="hud-value hud-chase-value">18.0 m</span></div>
+      <div id="hud-chase" class="hud-chase"><div id="hud-chase-fill"></div></div>
+      <div id="hud-state" class="hud-state"></div>
+      <div id="hud-boost" class="hud-boost hidden"><div id="hud-boost-fill"></div></div>
+    </div>
+
+    <button id="hud-pause" type="button" aria-label="暂停">⏸</button>
+
+
+    <div id="menu">
+      <div class="menu-panel" id="menu-main">
+        <h1 class="menu-title">奶蛙快跑</h1>
+        <p class="menu-sub">海滨跑酷 · 躲开袋鼠</p>
+        <div class="menu-buttons">
+          <button id="menu-start" class="menu-button primary">开始游戏</button>
+          <button id="menu-scores" class="menu-button">历史纪录</button>
+          <button id="menu-settings" class="menu-button">设置</button>
+        </div>
+        <div id="menu-difficulty" class="diff-row" role="group" aria-label="难度选择">
+          <button type="button" class="diff-button" data-difficulty="casual">休闲</button>
+          <button type="button" class="diff-button" data-difficulty="standard">标准</button>
+          <button type="button" class="diff-button" data-difficulty="hard">硬核</button>
+        </div>
+        <button id="guide-toggle" class="menu-button" type="button" aria-expanded="false" aria-controls="menu-guide">操作说明 ▾</button>
+        <div id="menu-guide" class="guide"></div>
+        <p class="menu-version" id="menu-version"></p>
+      </div>
+
+      <div class="menu-panel hidden" id="panel-settings">
+        <h2 class="panel-title">设置</h2>
+        <label class="set-row"><span>总开关</span><input id="set-master" type="checkbox" /></label>
+        <label class="set-row"><span>背景音乐</span><input id="set-bgm" type="range" min="0" max="100" /><em id="set-bgm-value">60</em></label>
+        <label class="set-row"><span>音效</span><input id="set-sfx" type="range" min="0" max="100" /><em id="set-sfx-value">80</em></label>
+        <label class="set-row"><span>人声 / 台词</span><input id="set-voice" type="range" min="0" max="100" /><em id="set-voice-value">90</em></label>
+        <button id="panel-settings-back" class="menu-button">返回</button>
+      </div>
+
+      <div class="menu-panel hidden" id="panel-scores">
+        <h2 class="panel-title">历史纪录</h2>
+        <div id="history-best" class="history-best hidden"></div>
+        <div class="score-head"><span>日期</span><span>难度</span><span>距离</span><span>用时</span><span>奶瓶</span><span>撞击</span></div>
+        <div id="score-list"></div>
+        <p id="score-empty" class="score-empty">还没有纪录，去跑一局吧</p>
+        <div id="score-confirm" class="hidden score-confirm">
+          <span>清空全部纪录？</span>
+          <button id="score-confirm-yes" class="menu-button danger">确认清空</button>
+          <button id="score-cancel" class="menu-button">取消</button>
+        </div>
+        <div class="panel-actions">
+          <button id="score-clear" class="menu-button">清空纪录</button>
+          <button id="panel-scores-back" class="menu-button">返回</button>
+        </div>
+      </div>
+
+      <div class="menu-panel hidden" id="panel-pause">
+        <h2 class="panel-title">已暂停</h2>
+        <div class="menu-buttons">
+          <button id="pause-resume" class="menu-button primary">继续游戏</button>
+          <button id="pause-restart" class="menu-button">重新开始</button>
+          <button id="pause-menu" class="menu-button">返回主菜单</button>
+        </div>
+      </div>
+    </div>
+    <div id="fade"></div>
+    <div id="skip-hint" class="hidden">任意键 / 点击 跳过开场</div>
+
+    <div id="overlay" class="hidden">
+      <div class="result-panel">
+        <div class="result-head">
+          <div class="result-title">本局结束</div>
+          <div id="result-record" class="result-badge hidden">新纪录</div>
+        </div>
+        <div class="result-grid">
+          <div class="result-cell">
+            <span class="result-label">本局距离</span>
+            <span id="result-distance" class="result-value">0 m</span>
+          </div>
+          <div class="result-cell">
+            <span class="result-label">本局用时</span>
+            <span id="result-time" class="result-value">0.0 s</span>
+          </div>
+          <div class="result-cell">
+            <span class="result-label">奶瓶</span>
+            <span id="result-bottles" class="result-value">0</span>
+          </div>
+          <div class="result-cell">
+            <span class="result-label">撞击次数</span>
+            <span id="result-hits" class="result-value">0</span>
+          </div>
+          <div class="result-cell result-cell-wide">
+            <span class="result-label">历史最高纪录</span>
+            <span id="result-best" class="result-value">0 m</span>
+          </div>
+        </div>
+        <div class="result-hint">按 R 或点击屏幕重开</div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

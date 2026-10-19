@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="data:," />
+    <title>输入自检 · 奶蛙快跑</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #14181f;
+        color: #d7dce5;
+        font: 13px/1.6 ui-monospace, Consolas, monospace;
+      }
+      #pad {
+        position: absolute;
+        inset: 0;
+        touch-action: none;
+      }
+      #report {
+        position: absolute;
+        inset: 16px auto auto 16px;
+        white-space: pre;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="pad"></div>
+    <pre id="report"></pre>
+    <script type="module" src="/src/selftest/input-selftest.ts"></script>
+  </body>
+</html>
