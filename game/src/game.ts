@@ -447,6 +447,8 @@ export class Game {
     // 角色位置按 alpha 插值，和相机一致；否则 60Hz 步进在 144fps 下会一格一格跳
     if (RIG_LERP) this.rig.root.position.lerpVectors(this.rigPrev, this.rigCur, alpha);
     else this.rig.root.position.copy(this.rigCur);
+    // 影子跟着插值后的位置走（放在 render 里，不能用 step 里的模拟坐标）
+    this.placeFootShadows();
     this.renderer.render(this.scene, this.camera);
     this.cpuAccum += performance.now() - cpuStart;
     this.cpuFrames += 1;
@@ -547,20 +549,32 @@ export class Game {
     return null;
   }
 
+  /** 只负责跟随地面；影子位置另见 placeFootShadows（必须跟着渲染插值后的位置） */
   private syncFootShadows(): void {
     this.groundPlane.position.z = this.player.z;
     this.grassPlane.position.z = this.player.z;
+  }
+
+  /**
+   * 影子跟着「渲染插值后的位置」走。
+   * 之前影子在 step() 里用 player.x 定位：模拟是 60Hz、渲染是插值到屏幕帧率，
+   * 于是换道时影子比角色慢半拍并一格格跳，看起来像重影/抽搐。
+   * 顺带把圆盘压成椭圆（z 方向 0.62），更像贴地投影。
+   */
+  private placeFootShadows(): void {
     const player = this.footShadows[0];
     if (player) {
-      player.position.set(this.player.x, 0.02, this.player.z);
-      player.scale.setScalar(1 - Math.min(0.35, this.player.y * 0.3));
+      const rig = this.rig.root.position;
+      const shrink = 1 - Math.min(0.35, Math.max(0, this.player.y) * 0.3);
+      player.position.set(rig.x, 0.02, rig.z);
+      player.scale.set(shrink, 1, shrink * 0.62);
     }
     const chaser = this.footShadows[1];
     if (chaser) {
       const root = this.chaserView.root;
       chaser.visible = root.visible;
       chaser.position.set(root.position.x, 0.02, root.position.z);
-      chaser.scale.setScalar(1.15);
+      chaser.scale.set(1.15, 1, 1.15 * 0.62);
     }
   }
 
