@@ -1,7 +1,44 @@
 # 项目现状与接手说明（新会话从这里开始）
 
 > 这份文件是给"下一个我"看的。上下文会滚掉，**文件不会**。
-> 最后更新：音效/BGM、难度三档、暂停、历史纪录、视觉打磨、标题页、袋鼠换肤、引导教程页、结算双按钮、心跳警示 —— 均已落地并验收（本地已提交，**未推送**）。GitHub 仓库已被用户删除，要上线时重建再推。
+> 最后更新：2026-10-20 —— 已提交到本地 `master`（最新 `bef43aa5`，含音效/BGM、难度三档、暂停、历史纪录、视觉、标题页、袋鼠换肤、引导教程、结算双按钮、心跳警示、滚动指示条；外加两个音频 bug 修复）。**尚未推送**：GitHub 上的 `naiwa-runner` 已被用户删除，要上线时重建仓库再推。工作区已清理（详见「十一、工作区结构」）。
+
+## 零、一分钟看懂当前状态（新会话先读这段）
+
+| 项 | 值 |
+|---|---|
+| 代码位置 | `game/`（TypeScript + Vite + Three.js，无后端） |
+| 本地分支 / 最新提交 | `master` / `bef43aa5` |
+| 远端 | 无（GitHub 仓库已被用户删除；`origin` 仍配置为 `https://github.com/pjh060602/naiwa-runner.git`，重建同名空仓库即可直接 push） |
+| 能跑吗 | 能：`cd game && npm run play` → http://localhost:5173/ |
+| 类型/逻辑/构建 | `npx tsc --noEmit` · `npm run verify:logic`（45 条断言全 PASS）· `npm run build` |
+| 已知未修问题 | 见「八、待办」第 2 条（总开关已修，当前无已知 P0） |
+| 上传内容 | 只有 92 个文件 / 约 2.9 MB（`game/` + `docs/` + `.github/` + `PROJECT-STATE.md` + `.gitignore`）；`.git` 本地已瘦身到 3.1 MB |
+
+### 代码地图（改东西先看这里，别乱翻）
+
+```
+game/src/
+  game.ts          主循环、状态机（boot/menu/intro/running/caught/result）、难度、暂停、结算、音效触发
+  main.ts          启动引导、标题页（splash）开关、game-ready
+  audio/audio.ts   全部音频：合成音效、BGM 调度器、心跳床、台词片段、总开关 setMuted
+  core/            config.ts（数值/难度表）、input.ts（键盘+滑动）、loop.ts、assets.ts、palette.ts
+  player/          player.ts（跑跳滑铲/肚皮滑行）、collision.ts、rig.ts
+  character/       chaser.ts（袋鼠换肤 setSkin）、naiwa-*.ts（奶蛙纸片人）
+  world/           track.ts（跑道+栏杆）、park.ts（道具流）、director.ts（障碍节奏）、chaser.ts（ChaseModel/ChaseView/loadChaser）、
+                   obstacles.ts、collectibles.ts、stage.ts（演出）、glow.ts、props/**（场景美术）、backdrop/**（海天远景）
+  ui/              menu.ts（菜单/难度/历史/换肤/教程/滚动指示器）、overlay.ts（结算）、hud.ts
+game/public/models/  奶蛙与袋鼠贴图（含 kang_gdut_tex.png 广工袋鼠）
+game/public/audio/   笑声与袋鼠台词 mp3
+game/scripts/verify-logic.ts  无浏览器逻辑断言（碰撞矩阵/演出时间轴/栏杆回归等 45 条）
+```
+
+### 迭代约定（用户明确要求继续更新）
+
+1. 改完必跑三连：`npx tsc --noEmit` / `npm run verify:logic` / `npm run build`；涉及碰撞盒、跳跃/滑铲时序、演出时间轴的改动必须让 verify:logic 继续全绿。
+2. 视觉/交互改动要给出**可量化证据**（元素 rect、无重叠、无横向溢出、双视口截图），别只说"看起来好了"。
+3. 手机兼容：`dvh` 一律配 `vh` 兜底（老 iOS Safari / 安卓 WebView 不支持 dvh，会让高度限制整条失效）。
+4. 提交前确认 `.gitignore` 覆盖新增的本地产物；不要提交 `.venv-ml/`、`.tmp/`、`shots/`、`game/dist/`。
 
 ## 一、这是什么
 
