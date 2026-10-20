@@ -76,11 +76,27 @@ export class AudioBus {
   chaseBed: { timer: number; nextTime: number; intensity: number } | null = null;
   private chaseBedGain: GainNode | null = null;
   private chaseBedHp: BiquadFilterNode | null = null;
+  /** 设置里的「总开关」：关掉时整条输出静音（sfx/bgm 由各自的音量归零，心跳床与后续新增音源靠这里兜底） */
+  private muted = false;
   private readonly counts = new Map<string, number>();
   private skipNoted = false;
   unlocked = false;
 
-  /** 设置里改音量：sfx/voice/bgm 各自 0..1（master 为 0 时全部静音） */
+  /** 总开关：true = 全部静音。总线级兜底，避免漏掉任何直接接 master 的音源（如心跳床）。 */
+  setMuted(muted: boolean): void {
+    this.muted = muted;
+    const context = this.context;
+    if (this.master && context) {
+      this.master.gain.setTargetAtTime(muted ? 0 : MASTER_GAIN, context.currentTime, 0.03);
+    }
+    if (this.chaseBedGain && context && this.chaseBed) {
+      const now = context.currentTime;
+      this.chaseBedGain.gain.cancelScheduledValues(now);
+      this.chaseBedGain.gain.setTargetAtTime(muted ? 0 : 1, now, 0.03);
+    }
+  }
+
+  /** 设置里改音量：sfx/voice/bgm 各自 0..1（总开关另见 setMuted） */
   setVolumes(sfx: number, voice: number, bgm: number): void {
     this.volumeSfx = sfx;
     this.volumeVoice = voice;
@@ -296,9 +312,10 @@ export class AudioBus {
     }
     const bus = this.chaseBedGain;
     const now = context.currentTime;
+    const target = this.muted ? 0.0001 : 1;
     bus.gain.cancelScheduledValues(now);
     bus.gain.setValueAtTime(Math.max(0.0001, bus.gain.value), now);
-    bus.gain.exponentialRampToValueAtTime(1, now + CHASE_BED_FADE_IN);
+    bus.gain.exponentialRampToValueAtTime(target, now + CHASE_BED_FADE_IN);
     this.chaseBed = {
       timer: window.setInterval(() => this.scheduleChaseBed(), CHASE_BED_INTERVAL_MS),
       nextTime: now + 0.05,

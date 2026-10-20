@@ -979,6 +979,7 @@ export class Game {
     this.difficulty = settings.difficulty;
     this.audio.setBgmRate(DIFFICULTY[settings.difficulty].bgmRate);
     const scale = settings.master ? 1 : 0;
+    this.audio.setMuted(!settings.master);
     this.audio.setVolumes(settings.sfx * scale, settings.voice * scale, settings.bgm * scale);
     this.chaserRig.setSkin(settings.chaserSkin);
     // 画质档位已取消，固定最高（原「高」档）：像素比顶到设备 dpr 上限 2
