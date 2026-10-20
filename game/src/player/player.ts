@@ -31,6 +31,10 @@ const FLY_HEIGHT = 1.2;
 const FLY_RISE_RATE = 6;
 /** 飞行结束回落阻尼速率：平滑落回地面，避免抖动 */
 const FLY_FALL_RATE = 10;
+
+/** 撞墙时朝墙面方向顶出的小幅位移（纯视觉，不参与碰撞），以及回弹时长 */
+const BUMP_NUDGE = 0.5;
+const BUMP_NUDGE_TIME = 0.32;
 const damp = (current: number, target: number, rate: number, dt: number): number =>
   current + (target - current) * (1 - Math.exp(-rate * dt));
 
@@ -54,6 +58,11 @@ export class Player {
   flyLeft = 0;
   /** 撞墙信号：moveLane 越界时置 true，供 game.ts 消费做惩罚 */
   lastBump = false;
+
+  /** 撞墙小幅位移偏移（渲染时叠加到 x 上，不参与碰撞判定） */
+  nudgeX = 0;
+  private nudgeT = BUMP_NUDGE_TIME;
+  private nudgeDir: -1 | 1 = 1;
 
   prevX = 0;
   prevY = 0;
@@ -119,6 +128,8 @@ export class Player {
     this.flying = false;
     this.flyLeft = 0;
     this.lastBump = false;
+    this.nudgeX = 0;
+    this.nudgeT = BUMP_NUDGE_TIME;
     this.moving = false;
     this.moveElapsed = 0;
     this.moveDuration = LANE_CHANGE_TIME;
@@ -139,12 +150,15 @@ export class Player {
     return bump;
   }
 
-  /** 换道：真位移，缓动 0.16s；肚皮滑行时 ×1.4 变笨。飞行中不允许换道且不报 bump。 */
+  /**
+   * 换道：真位移，缓动 0.16s；肚皮滑行时 ×1.4 变笨。
+   * 飞行中同样可换道（烟花期间仍无敌）；越界则报 bump 并做一次贴墙回弹。
+   */
   moveLane(dir: -1 | 1): boolean {
-    if (this.flying) return false;
     const nextLane = Math.min(LANE_CENTERS.length - 1, Math.max(0, this.lane + dir));
     if (nextLane === this.lane) {
       this.lastBump = true;
+      this.startBumpNudge(dir);
       return false;
     }
     this.lastBump = false;
@@ -155,6 +169,12 @@ export class Player {
     this.moveDuration = LANE_CHANGE_TIME * (this.belly ? BELLY_LANE_CHANGE_MULT : 1);
     this.moving = true;
     return true;
+  }
+
+  /** 撞墙：朝墙面方向顶出一小段再回弹（只改视觉偏移，不动车道与碰撞盒） */
+  private startBumpNudge(dir: -1 | 1): void {
+    this.nudgeDir = dir;
+    this.nudgeT = 0;
   }
 
   /**
@@ -260,6 +280,14 @@ export class Player {
         this.moving = false;
         this.x = this.moveToX;
       }
+    }
+
+    // 撞墙回弹：先朝墙面顶出，再弹回并轻微过冲，最后归零
+    if (this.nudgeT < BUMP_NUDGE_TIME) {
+      this.nudgeT = Math.min(BUMP_NUDGE_TIME, this.nudgeT + dt);
+      const p = this.nudgeT / BUMP_NUDGE_TIME;
+      this.nudgeX = this.nudgeDir * BUMP_NUDGE * Math.sin(p * Math.PI * 2) * Math.exp(-2.2 * p);
+      if (p >= 1) this.nudgeX = 0;
     }
 
     if (this.sliding) {

@@ -693,7 +693,8 @@ export class Game {
       this.rigState = next;
     }
     this.rigPrev.copy(this.rigCur);
-    this.rigCur.set(this.player.x, this.player.y, this.player.z);
+    // x 叠加撞墙回弹偏移：磕到栏杆时身体会贴出去再弹回，影子跟着一起动
+    this.rigCur.set(this.player.x + this.player.nudgeX, this.player.y, this.player.z);
     this.rig.root.position.copy(this.rigCur);
     this.rig.setSpeed(this.speed / SPEED_MAX);
     this.rig.setJumpStage?.(this.player.jumpStage);
@@ -950,7 +951,7 @@ export class Game {
     }
     this.player.update(dt);
     this.rigPrev.copy(this.rigCur);
-    this.rigCur.set(this.player.x, this.player.y, this.player.z);
+    this.rigCur.set(this.player.x + this.player.nudgeX, this.player.y, this.player.z);
     this.rig.root.position.copy(this.rigCur);
     this.rig.root.rotation.y = 0;
     if (pose.naiwaState !== this.rigState) {
