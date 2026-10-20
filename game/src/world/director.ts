@@ -45,8 +45,13 @@ const WEIGHTS: Record<Tier, readonly Weight[]> = {
     ['awning', 18],
     ['pole', 20],
     ['cart', 24],
+    // 高门架（只能滑铲钻过去）不能再漏：漏了以后长距离段就完全见不到它
+    ['fence', 16],
   ],
 };
+
+/** 供验收脚本检查：每档权重都必须同时包含「跳跃解」和「滑铲解」的障碍 */
+export const TIER_WEIGHTS = WEIGHTS;
 
 const tierOf = (distance: number): Tier => {
   if (distance < TIER_NEAR_END) return 'near';

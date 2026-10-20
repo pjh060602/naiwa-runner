@@ -17,6 +17,7 @@ import {
 import { rayAabbEntry } from '../src/player/collision';
 import { Player } from '../src/player/player';
 import { KINDS } from '../src/world/obstacles';
+import { TIER_WEIGHTS } from '../src/world/director';
 import { stagePose } from '../src/world/stage';
 import { createScoreStore, isRecordRow, mergeScore } from '../src/ui/menu';
 import type { ScoreEntry, StorageLike } from '../src/ui/menu';
@@ -261,6 +262,13 @@ check('海堤栏杆前端 z=6、末根 z=-279.6（间距 2.4m）',
   [Math.round(railZFront * 10) / 10, Math.round(railZBack * 10) / 10], [6, -279.6]);
 longSeams.getMatrixAt(0, m);
 check('长接缝 reset() 后不在原点', Math.abs(m.elements[14]) > 50, true);
+
+// 长距离段（dense）必须保留「只能滑铲」和「只能跳」两类解法，否则跑到后期某类障碍会彻底消失
+for (const tier of ['near', 'mid', 'dense'] as const) {
+  const answers = new Set(TIER_WEIGHTS[tier].map(([kind]) => KINDS[kind].answer));
+  check(`${tier} 档权重同时含 jump 与 slide 解`, [answers.has('jump'), answers.has('slide')], [true, true]);
+}
+check('dense 档包含高门架 fence（游泳圈木架子）', TIER_WEIGHTS.dense.map(([k]) => k).includes('fence'), true);
 
 
 console.log('');
