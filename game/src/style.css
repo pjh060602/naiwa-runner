@@ -52,6 +52,13 @@ body {
   display: none;
 }
 
+/* 封面淡出期间的输入闸：挡住移动端 touchend 后补发的幽灵 click，
+   避免它砸在封面消失后同坐标的菜单按钮上（会误开「历史纪录」等面板）。 */
+body.splash-dismissing #menu,
+body.splash-dismissing #hud-pause {
+  pointer-events: none;
+}
+
 .splash-sun {
   position: absolute;
   top: -160px;

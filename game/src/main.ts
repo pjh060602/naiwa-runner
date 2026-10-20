@@ -49,8 +49,13 @@ function closeSplash(): void {
   window.removeEventListener('touchstart', onSplashInput);
   splashEnter?.removeEventListener('click', onSplashInput);
   splash.classList.add('closing');
+  // 移动端幽灵点击防护：手指抬起后浏览器可能在 ~300ms 补发一次 click，
+  // 此时封面若已让开，该 click 会落在同坐标的菜单按钮上（曾误触「历史纪录」）。
+  // 这段窗口内让菜单不接受指针事件，窗口结束再放开。
+  document.body.classList.add('splash-dismissing');
   // CSS 过渡 200ms，结束后彻底让开（display:none），不残留透明全屏层挡点击
   window.setTimeout(() => splash.classList.add('hidden'), 230);
+  window.setTimeout(() => document.body.classList.remove('splash-dismissing'), 450);
 }
 
 function tryCloseSplash(): void {
