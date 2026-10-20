@@ -123,6 +123,54 @@ export class AudioBus {
    */
   private readonly isWechat = /MicroMessenger/i.test(typeof navigator === 'undefined' ? '' : navigator.userAgent);
   private wechatHookInstalled = false;
+  /** QQ/微信等 X5 内核：必须在真实手势里让一个 <audio> 真正 play() 过，音频通道才会打开 */
+  private silentAudio: HTMLAudioElement | null = null;
+
+  /** 生成一段 0.1s 静音 WAV 的 blob URL（不引外部文件，X5 也认） */
+  private buildSilentWavUrl(): string {
+    const sampleRate = 8000;
+    const samples = 800;
+    const buffer = new ArrayBuffer(44 + samples * 2);
+    const view = new DataView(buffer);
+    const write = (offset: number, text: string): void => {
+      for (let i = 0; i < text.length; i += 1) view.setUint8(offset + i, text.charCodeAt(i));
+    };
+    write(0, 'RIFF');
+    view.setUint32(4, 36 + samples * 2, true);
+    write(8, 'WAVE');
+    write(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * 2, true);
+    view.setUint16(32, 2, true);
+    view.setUint16(34, 16, true);
+    write(36, 'data');
+    view.setUint32(40, samples * 2, true);
+    return URL.createObjectURL(new Blob([buffer], { type: 'audio/wav' }));
+  }
+
+  /** 在真实手势里播一次静音 <audio>：X5（QQ/微信安卓）靠这个解锁媒体通道 */
+  private primeHtmlAudio(): void {
+    try {
+      if (!this.silentAudio) {
+        const element = document.createElement('audio');
+        element.setAttribute('playsinline', '');
+        element.setAttribute('webkit-playsinline', '');
+        element.loop = true;
+        element.preload = 'auto';
+        // 不要 muted：部分 X5 版本认为 muted 的元素「没真播过」，不解锁
+        element.volume = 0.001;
+        element.src = this.buildSilentWavUrl();
+        this.silentAudio = element;
+      }
+      const played = this.silentAudio.play();
+      if (played) void played.catch(() => undefined);
+    } catch {
+      /* 播不了就交给下一次手势 */
+    }
+  }
 
   /** 播一段 1 帧静音缓冲：微信/iOS 用它把 AudioContext 从 suspended 顶到 running。 */
   private primeSilent(context: AudioContext): void {
@@ -143,6 +191,7 @@ export class AudioBus {
     if (!context) return;
     if (context.state !== 'running') void context.resume();
     this.primeSilent(context);
+    this.primeHtmlAudio();
   }
 
   private installWechatHook(): void {

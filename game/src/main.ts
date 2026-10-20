@@ -83,6 +83,34 @@ void Promise.all([loadRig(), loadChaser()]).then(([rig, chaser]) => {
   document.body.classList.add('game-ready');
   // 用户若在菜单就绪前已触发过，此时立即关闭封面（主菜单已在背后渲染好，切换无空窗）
   tryCloseSplash();
+
+  // 音频兜底：QQ / 微信（X5 内核）首次手势常常解不开 AudioContext，
+  // 给玩家一个明确的按钮再点一次；成功进入 running 后自动隐藏。
+  const unlockButton = document.getElementById('audio-unlock');
+  if (unlockButton) {
+    unlockButton.addEventListener('click', () => {
+      game.unlockAudio();
+      if (game.audioRunning) unlockButton.classList.add('hidden');
+    });
+    let checks = 0;
+    let elapsed = 0;
+    const timer = window.setInterval(() => {
+      elapsed += 1;
+      if (game.audioRunning) {
+        unlockButton.classList.add('hidden');
+        window.clearInterval(timer);
+        return;
+      }
+      // 只有「用户已经点过、但音频仍没起来」才提示；没交互前什么都不显示
+      if (!game.audioUnlocked) {
+        checks = 0;
+        return;
+      }
+      checks += 1;
+      if (checks >= 3) unlockButton.classList.remove('hidden');
+      if (elapsed > 200) window.clearInterval(timer);
+    }, 400);
+  }
   console.log(
     `[main] 启动完成（seed=${seed}, bot=${bot}, gallery=${gallery ?? 'off'}, 历史纪录=${forcedBest ?? 'localStorage'}）`,
   );

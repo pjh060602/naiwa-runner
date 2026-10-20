@@ -95,6 +95,22 @@ export class Game {
   private readonly overlay: ResultsPanel;
   private readonly menu: MenuUI;
   private readonly audio = new AudioBus();
+
+  /** 音频是否真的在跑（QQ/微信 X5 首次交互常仍是 suspended，main.ts 用它决定是否显示兜底按钮） */
+  get audioRunning(): boolean {
+    return this.audio.state === 'running';
+  }
+
+  /** 是否已经发生过第一次用户交互（没交互前不该提示「点这里开启声音」） */
+  get audioUnlocked(): boolean {
+    return this.audio.unlocked;
+  }
+
+  /** 兜底按钮 / 任意手势都可以调用：解锁 AudioContext 并播一次静音 <audio>（幂等） */
+  unlockAudio(): void {
+    this.audio.unlock();
+    this.audio.startBgm();
+  }
   private readonly naiwaTextures: NaiwaTextures;
   private readonly track: Track;
   private readonly park: ParkField;
