@@ -128,11 +128,13 @@ export class AudioBus {
       }
       this.context = new Ctor();
       this.master = this.context.createGain();
-      this.master.gain.value = MASTER_GAIN;
+      // 构造函数里的 applySettings 早于 AudioContext 创建，这里必须用已存下的音量补一次，
+      // 否则首次加载时滑条设置（含总开关）要等用户再动一次滑条才生效。
+      this.master.gain.value = this.muted ? 0 : MASTER_GAIN;
       this.master.connect(this.context.destination);
 
       this.sfxBus = this.context.createGain();
-      this.sfxBus.gain.value = 1;
+      this.sfxBus.gain.value = Math.max(0, Math.min(1, this.volumeSfx));
       this.sfxBus.connect(this.master);
 
       this.noise = this.createNoiseBuffer(this.context);
@@ -274,11 +276,6 @@ export class AudioBus {
     } catch {
       /* 已经停了 */
     }
-  }
-
-  /** game.ts 的 dispose 仍会调用；场景低音已随 BGM 改造移除，保留兼容空实现 */
-  stopDrone(): void {
-    /* 无操作 */
   }
 
   /**
