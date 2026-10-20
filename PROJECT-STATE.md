@@ -51,6 +51,8 @@ game/scripts/verify-logic.ts  无浏览器逻辑断言（碰撞矩阵/演出时�
 | 护盾 | 抵挡任意一次撞击（含撞墙）：不扣距离、不加撞击、**不减速**，破碎 0.4s 无敌 | `SHIELD_BREAK_INVULN = 0.4` |
 | 撞墙回弹 | 撞到跑道边缘时身体朝栏杆顶出约 0.3m 再弹回（纯视觉，不改碰撞盒） | `BUMP_NUDGE`（player.ts） |
 | 道具刷新 | 低概率随机，三种均等，间隔 190–360m | `ITEM_GAP = [190, 360]`、`ITEM_FIRST_Z = -140` |
+| 复活 | 被追上后可点「复活继续」，**不限次数**；里程/奶瓶/用时/速度保留，追兵甩回最远；演出：升天（音效）→ 复位捧腹大笑 → 袋鼠台词，任意键/轻点可跳过 | `game.ts`：`startRevive` / `enterReviveLaugh` / `enterReviveLine` / `finishRevive` |
+| 复活记录规则 | 只保留「复活前」那次死亡的纪录（历史面板标「复活前」）；**复活后的成绩不写入**，但仍会弹结算面板 | `HistoryEntry.revive`、`markHistoryRevive()` |
 
 **障碍分档权重铁律**：`world/director.ts` 的 `WEIGHTS` 里，near / mid / dense 三档都必须同时保留「只能跳」和「只能滑铲」两类解法。
 v1.0.3 之前 dense 档漏了 `fence`（高门架 = 游泳圈木架子），导致 900m 之后这类障碍彻底消失；现在 `npm run verify:logic` 有断言守着。

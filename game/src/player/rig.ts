@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
 /** 与 docs/M1-接口契约.md 的 NaiwaRig 保持一致（结构相同，避免依赖不存在的模块）。 */
-export type NaiwaState = 'idle' | 'run' | 'jump' | 'fall' | 'slide' | 'hit' | 'taunt' | 'startle' | 'fly';
+export type NaiwaState = 'idle' | 'run' | 'jump' | 'fall' | 'slide' | 'hit' | 'taunt' | 'startle' | 'fly' | 'ascend';
 
 export interface NaiwaRig {
   readonly root: THREE.Group;

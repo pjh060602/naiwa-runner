@@ -49,7 +49,7 @@ import { Player } from './player/player';
 import type { NaiwaRig, NaiwaState } from './player/rig';
 import { Hud } from './ui/hud';
 import { ResultsPanel } from './ui/overlay';
-import { MenuUI, bestHistory, loadHistory, loadScores, MIN_SCORE_DISTANCE } from './ui/menu';
+import { MenuUI, bestHistory, loadHistory, loadScores, markHistoryRevive, MIN_SCORE_DISTANCE } from './ui/menu';
 import type { Settings } from './ui/menu';
 import { BottleField, ItemField } from './world/collectibles';
 import type { ItemKind } from './world/collectibles';
@@ -85,7 +85,7 @@ export interface GameOptions {
   shot?: boolean;
 }
 
-type GameState = 'boot' | 'menu' | 'intro' | 'running' | 'caught' | 'result';
+type GameState = 'boot' | 'menu' | 'intro' | 'running' | 'caught' | 'result' | 'revive';
 
 const HISTORY_SIZE = 64;
 const BOT_JUMP_TIME = 0.28;
@@ -164,6 +164,16 @@ export class Game {
   private bumpCooldownUntil = 0;
   private invulnUntil = 0;
   private wasFlying = false;
+
+  /** 复活演出：升天 → 捧腹大笑 → 袋鼠台词 → 继续跑 */
+  private revivePhase: 'none' | 'ascend' | 'laugh' | 'line' = 'none';
+  private reviveTimer = 0;
+  private reviveLift = 0;
+  private reviveToken = 0;
+  /** 本局是否用过复活（用过的局不计入历史纪录） */
+  private reviveUsed = false;
+  /** 结算时写入的那条纪录（复活时撤回） */
+  private submittedHistory: { distance: number; elapsed: number; hits: number; bottles: number; difficulty: Settings['difficulty']; date: string } | null = null;
   private stepTimer = 0;
   private lastPassed = 0;
   private dodgeStreak = 0;
@@ -278,7 +288,11 @@ export class Game {
     this.buffFx = new BuffFx(this.rig.root);
     this.director = new LevelDirector(this.obstacles, this.bottles, this.rng);
 
-    this.overlay = new ResultsPanel(() => this.restart(), () => this.backToMenu());
+    this.overlay = new ResultsPanel(
+      () => this.restart(),
+      () => this.backToMenu(),
+      () => this.startRevive(),
+    );
     console.log('[scores] 启动时读到的榜单 ' + JSON.stringify(loadScores()));
     this.menu = new MenuUI({
       onStart: () => this.startRun(),
@@ -379,6 +393,12 @@ export class Game {
 
     if (this.state === 'menu' || this.state === 'boot') {
       this.applyStagePose(stagePose('intro-laugh', 0), dt, false);
+      this.cpuAccum += performance.now() - cpuStart;
+      return;
+    }
+
+    if (this.state === 'revive') {
+      this.updateRevive(dt);
       this.cpuAccum += performance.now() - cpuStart;
       return;
     }
@@ -767,6 +787,11 @@ export class Game {
   }
 
   private handleIntent(intent: Intent): void {
+    // 复活演出：任意输入（按键 / 轻点屏幕）都可以跳过，直接回到跑动
+    if (this.state === 'revive') {
+      this.skipRevive();
+      return;
+    }
     if (this.handleFirstInput()) return;
     if (intent === 'left') {
       if (this.player.moveLane(-1)) this.audio.play('lane');
@@ -843,6 +868,11 @@ export class Game {
     this.bottleCount = 0;
     this.boostLeft = 0;
     this.hits = 0;
+    this.reviveUsed = false;
+    this.submittedHistory = null;
+    this.revivePhase = 'none';
+    this.reviveLift = 0;
+    this.reviveToken += 1;
     this.resetBuffs();
     this.milestoneNext = MILESTONE_EVERY;
     this.obstacles.reset();
@@ -1039,6 +1069,115 @@ export class Game {
     console.log(`[intro] 演出结束 → RUNNING（追兵 ${chaserStart}m，计时/距离归零，第一个障碍 ≥${INTRO_FIRST_OBSTACLE_DELAY}s 后）`);
   }
 
+  /**
+   * 复活：里程 / 奶瓶 / 速度 / 用时全部保持原样，只把追兵甩回最远，
+   * 然后原地播一段「升天 → 复位 → 捧腹大笑 → 袋鼠台词」的演出，结束后继续跑。
+   * 用过复活的这一局不计入历史纪录。
+   */
+  private startRevive(): void {
+    // 复活不限次数：每次被追上都能复活，只是复活后的成绩不再计入纪录
+    if (this.state !== 'result') return;
+    this.reviveUsed = true;
+    // 结算时已按普通成绩写过一条，这里把它标成「复活前」；
+    // 复活后继续跑到再次结束会再写一条「复活后」，于是这一局留下两条带标记的纪录
+    if (this.submittedHistory) {
+      markHistoryRevive(this.submittedHistory, 'before');
+      this.submittedHistory = null;
+    }
+    this.revivePhase = 'ascend';
+    this.reviveTimer = 0;
+    this.reviveLift = 0;
+    this.state = 'revive';
+    this.overlay.hide();
+    this.audio.stopChaseBed();
+    this.audio.stopClip();
+    this.resetBuffs();
+    this.paused = false;
+    // 追兵甩到最远，否则一复活就被立刻再抓
+    this.chaser.distance = DIFFICULTY[this.difficulty].chaserStart;
+    this.rig.setState('ascend');
+    this.rigState = 'ascend';
+    this.naiwaTextures.set('ascend');
+    this.player.y = 0;
+    this.stageQueue = [];
+    this.stageIndex = 0;
+    this.stagingPaused = false;
+    const token = ++this.reviveToken;
+    console.log(`[revive] 复活：里程 ${Math.floor(this.distance)}m / 奶瓶 ${this.bottleCount} / 速度 ${this.speed.toFixed(1)} 保持不变，升天演出开始`);
+    void this.audio.playClip('audio/ascend.mp3', 5.2).then(() => {
+      if (token === this.reviveToken) this.enterReviveLaugh();
+    });
+  }
+
+  /** 升天音效播完：复位到地面 + 切捧腹大笑贴图 + 播笑声 */
+  private enterReviveLaugh(): void {
+    this.revivePhase = 'laugh';
+    this.reviveTimer = 0;
+    this.reviveLift = 0;
+    this.rig.setState('taunt');
+    this.rigState = 'taunt';
+    this.naiwaTextures.set('laugh');
+    console.log('[revive] 升天音效结束 → 复位、捧腹大笑');
+    const token = ++this.reviveToken;
+    void this.audio.playClip(CLIP_LAUGH_URL, CLIP_LAUGH_FALLBACK).then(() => {
+      if (token === this.reviveToken) this.enterReviveLine();
+    });
+  }
+
+  /** 笑完：袋鼠台词「你的胆子真是肥嘟嘟的」 */
+  private enterReviveLine(): void {
+    this.revivePhase = 'line';
+    this.reviveTimer = 0;
+    console.log('[revive] 袋鼠：你的胆子真是肥嘟嘟的');
+    const token = ++this.reviveToken;
+    void this.audio.playClip(CLIP_KANG_URL, CLIP_KANG_FALLBACK).then(() => {
+      if (token === this.reviveToken) this.finishRevive();
+    });
+  }
+
+  /** 任意键 / 轻点屏幕跳过复活演出 */
+  private skipRevive(): void {
+    if (this.state !== 'revive') return;
+    this.audio.stopClip();
+    this.reviveToken += 1;
+    console.log('[revive] 跳过复活演出');
+    this.finishRevive();
+  }
+
+  /** 演出结束：回到跑动状态继续追，本局不计纪录 */
+  private finishRevive(): void {
+    this.revivePhase = 'none';
+    this.reviveLift = 0;
+    this.stageToken += 1;
+    this.naiwaTextures.set('auto');
+    this.rig.setState('run');
+    this.rigState = 'run';
+    this.player.y = 0;
+    this.invulnUntil = this.elapsed + 0.8;
+    this.state = 'running';
+    console.log('[revive] 演出结束，继续奔跑（复活后的成绩不记录）');
+  }
+
+  private updateRevive(dt: number): void {
+    this.reviveTimer += dt;
+    if (this.revivePhase === 'ascend') {
+      const t = Math.min(1, this.reviveTimer / 1.1);
+      this.reviveLift = 1.1 * (1 - (1 - t) * (1 - t));
+    }
+    this.rigPrev.copy(this.rigCur);
+    this.rigCur.set(this.player.x, this.player.y + this.reviveLift, this.player.z);
+    this.rig.root.position.copy(this.rigCur);
+    this.rig.root.rotation.y = 0;
+    this.rig.update(dt);
+    this.chaserView.update(dt, this.chaser, this.player.z, this.player.x);
+    this.syncFootShadows();
+    // 相机保持最后一段跑动机位，只把视线随奶蛙升高稍稍上抬
+    this.lookPrevY = this.lookY;
+    this.lookY = 1.15 + this.reviveLift * 0.55;
+    this.camera.position.set(this.camX, this.camY, this.camZ);
+    this.camera.lookAt(this.lookX, this.lookY, this.lookZ);
+  }
+
   private startCaught(): void {
     this.audio.stopChaseBed();
     this.resetBuffs();
@@ -1054,22 +1193,29 @@ export class Game {
     this.naiwaTextures.set('auto');
     const distance = Math.floor(this.distance);
     const bestBefore = bestHistory(loadHistory());
-    const qualifies = distance >= MIN_SCORE_DISTANCE;
+    // 用过复活的这一局：复活前的成绩已在第一次结算时写入并标成「复活前」，
+    // 复活之后跑出来的成绩不再记录，所以这里排除掉
+    const qualifies = distance >= MIN_SCORE_DISTANCE && !this.reviveUsed;
     const isRecord =
       qualifies &&
       (bestBefore === null ||
         distance > bestBefore.distance ||
         (distance === bestBefore.distance && this.elapsed < bestBefore.elapsed));
     if (qualifies) {
-      const count = this.menu.submitHistory({
+      const entry = {
         distance,
         elapsed: this.elapsed,
         hits: this.hits,
         bottles: this.bottleCount,
         difficulty: this.difficulty,
         date: new Date().toISOString(),
-      });
-      console.log(`[history] 写入后共 ${count} 条`);
+        revive: this.reviveUsed ? ('after' as const) : undefined,
+      };
+      this.submittedHistory = this.reviveUsed ? null : entry;
+      const count = this.menu.submitHistory(entry);
+      console.log(`[history] 写入后共 ${count} 条${this.reviveUsed ? '（标记：复活后）' : ''}`);
+    } else if (this.reviveUsed) {
+      console.log('[history] 本局已使用复活：复活后的成绩不记录（只保留「复活前」那条）');
     } else {
       console.log(`[history] 距离 ${distance}m < ${MIN_SCORE_DISTANCE}m，不入纪录`);
     }
@@ -1077,7 +1223,16 @@ export class Game {
       console.log(`[game] 打破个人纪录：${distance} m（原纪录 ${bestBefore ? bestBefore.distance : '无'} m）`);
     }
     const best = isRecord ? distance : (bestBefore?.distance ?? 0);
-    this.overlay.show({ distance, elapsed: this.elapsed, bottles: this.bottleCount, hits: this.hits, best, isRecord });
+    this.overlay.show({
+      distance,
+      elapsed: this.elapsed,
+      bottles: this.bottleCount,
+      hits: this.hits,
+      best,
+      isRecord,
+      canRevive: true,
+      revived: this.reviveUsed,
+    });
     console.log(`[result] 结算：距离 ${distance}m / 用时 ${this.elapsed.toFixed(1)}s / 奶瓶 ${this.bottleCount} / 撞击 ${this.hits} 次 / 历史最高 ${best}m`);
   }
 

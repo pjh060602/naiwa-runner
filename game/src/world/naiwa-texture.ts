@@ -3,7 +3,7 @@ import type { NaiwaRig } from '../player/rig';
 import type { NaiwaTextureKey } from './stage';
 
 /** 奶蛙贴图覆盖键：'auto'/'laugh' 来自 stage.ts；第 5 个状态名 'fly' 对应飞行贴图 */
-export type NaiwaTextureOverride = NaiwaTextureKey | 'fly';
+export type NaiwaTextureOverride = NaiwaTextureKey | 'fly' | 'ascend';
 
 /**
  * 奶蛙的贴图覆盖（默认正面 / 大笑 / 飞行之间切）。
@@ -13,9 +13,10 @@ export class NaiwaTextures {
   private readonly sprite: THREE.Mesh | null;
   private laughTexture: THREE.Texture | null = null;
   private flyTexture: THREE.Texture | null = null;
+  private ascendTexture: THREE.Texture | null = null;
   private savedMap: THREE.Texture | null = null;
   private isOverridden = false;
-  private overrideKey: 'laugh' | 'fly' | null = null;
+  private overrideKey: 'laugh' | 'fly' | 'ascend' | null = null;
   private warned = false;
 
   private readonly rig: NaiwaRig;
@@ -31,9 +32,10 @@ export class NaiwaTextures {
 
     this.loadTexture('naiwa_laugh_tex.png', 'laugh');
     this.loadTexture('naiwa_fly_tex.png', 'fly');
+    this.loadTexture('naiwa_ascend_tex.png', 'ascend');
   }
 
-  private loadTexture(file: string, kind: 'laugh' | 'fly'): void {
+  private loadTexture(file: string, kind: 'laugh' | 'fly' | 'ascend'): void {
     const base = import.meta.env.BASE_URL;
     new THREE.TextureLoader().load(
       base + 'models/' + file,
@@ -42,13 +44,16 @@ export class NaiwaTextures {
         if (kind === 'laugh') {
           this.laughTexture = texture;
           if (this.isOverridden && this.overrideKey === 'laugh') this.applyLaugh();
-        } else {
+        } else if (kind === 'fly') {
           this.flyTexture = texture;
           if (this.isOverridden && this.overrideKey === 'fly') this.applyFly();
+        } else {
+          this.ascendTexture = texture;
+          if (this.isOverridden && this.overrideKey === 'ascend') this.applyAscend();
         }
       },
       undefined,
-      () => console.warn('[naiwa] ' + (kind === 'laugh' ? '大笑' : '飞行') + '贴图加载失败，期间沿用默认贴图'),
+      () => console.warn('[naiwa] ' + (kind === 'laugh' ? '大笑' : kind === 'fly' ? '飞行' : '升天') + '贴图加载失败，期间沿用默认贴图'),
     );
   }
 
@@ -59,6 +64,12 @@ export class NaiwaTextures {
       this.isOverridden = true;
       this.overrideKey = 'fly';
       this.applyFly();
+      return;
+    }
+    if (key === 'ascend') {
+      this.isOverridden = true;
+      this.overrideKey = 'ascend';
+      this.applyAscend();
       return;
     }
     if (typeof rig.setLook === 'function') {
@@ -105,6 +116,20 @@ export class NaiwaTextures {
     }
     if (this.savedMap === null) this.savedMap = material.map ?? null;
     material.map = this.flyTexture;
+    material.needsUpdate = true;
+  }
+
+  private applyAscend(): void {
+    const material = this.material();
+    if (!material || !this.ascendTexture) {
+      if (!this.warned) {
+        this.warned = true;
+        console.warn('[naiwa] 找不到可换贴图的材质，跳过升天贴图');
+      }
+      return;
+    }
+    if (this.savedMap === null) this.savedMap = material.map ?? null;
+    material.map = this.ascendTexture;
     material.needsUpdate = true;
   }
 

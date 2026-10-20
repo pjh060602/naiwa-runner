@@ -17,9 +17,9 @@ const DAMP = 12;
 
 const damp = (c: number, t: number, l: number, dt: number): number => c + (t - c) * (1 - Math.exp(-l * dt));
 
-type TexKey = 'front' | 'laugh' | 'slide' | 'jump' | 'fly';
+type TexKey = 'front' | 'laugh' | 'slide' | 'jump' | 'fly' | 'ascend';
 /** 奶蛙第 5 个状态名：'fly'（飞行）。只在 billboard 内部使用，NaiwaState 由外部扩展。 */
-type BillboardState = NaiwaState | 'fly';
+type BillboardState = NaiwaState | 'fly' | 'ascend';
 
 export function createNaiwaBillboard(): NaiwaRig {
   const root = new Group();
@@ -56,6 +56,7 @@ export function createNaiwaBillboard(): NaiwaRig {
   load('slide', 'naiwa_slide_tex.png');
   load('jump', 'naiwa_jump_tex.png');
   load('fly', 'naiwa_fly_tex.png');
+  load('ascend', 'naiwa_ascend_tex.png');
 
   let state: BillboardState = 'idle';
   let bellySlide = false;
@@ -73,6 +74,7 @@ export function createNaiwaBillboard(): NaiwaRig {
   const pick = (): TexKey => {
     if (look === 'laugh') return 'laugh';
     if (state === 'fly') return 'fly';
+    if (state === 'ascend') return 'ascend';
     if (state === 'slide' || bellySlide) return 'slide';
     if (jumpStage === 2) return 'jump';
     return 'front';
@@ -141,6 +143,9 @@ export function createNaiwaBillboard(): NaiwaRig {
             break;
           case 'fly':
             squashT = 1.02; leanT = -0.04;
+            break;
+          case 'ascend':
+            squashT = 1.03; leanT = 0;
             break;
           default:
             squashT = 1 + Math.sin(clock * Math.PI * 1.5) * 0.015;

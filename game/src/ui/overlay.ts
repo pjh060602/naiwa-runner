@@ -7,6 +7,10 @@ export interface RunStats {
   hits: number;
   best: number;
   isRecord: boolean;
+  /** 还能不能用复活（本局没用过） */
+  canRevive: boolean;
+  /** 本局已经用过复活 → 显示「不计入历史纪录」 */
+  revived: boolean;
 }
 
 /**
@@ -23,10 +27,13 @@ export class ResultsPanel {
   private readonly recordBadge = mustGet('result-record');
   private readonly restartButton = mustGet('result-restart');
   private readonly menuButton = mustGet('result-menu');
+  private readonly reviveButton = mustGet('result-revive');
+  private readonly reviveNote = mustGet('result-revive-note');
 
-  constructor(onRestart: () => void, onBackToMenu: () => void) {
+  constructor(onRestart: () => void, onBackToMenu: () => void, onRevive: () => void) {
     this.restartButton.addEventListener('click', onRestart);
     this.menuButton.addEventListener('click', onBackToMenu);
+    this.reviveButton.addEventListener('click', onRevive);
   }
 
   show(stats: RunStats): void {
@@ -36,6 +43,9 @@ export class ResultsPanel {
     this.hitElement.textContent = `${stats.hits}`;
     this.bestElement.textContent = `${stats.best} m`;
     this.recordBadge.classList.toggle('hidden', !stats.isRecord);
+    this.reviveButton.classList.toggle('hidden', !stats.canRevive);
+    this.reviveNote.textContent = stats.revived ? '本局已使用复活 · 只记录复活前的成绩' : '';
+    this.reviveNote.classList.toggle('hidden', !stats.revived);
     this.root.classList.remove('hidden');
     this.root.scrollTop = 0;
   }

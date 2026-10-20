@@ -548,6 +548,24 @@ body.menu-open #ambient {
   color: #9aa4b3;
 }
 
+/* 复活按钮：独占一行但比「再跑一次 / 返回主菜单」小一号，做次要操作 */
+#result-revive {
+  grid-column: 1 / -1;
+  justify-self: center;
+  width: auto;
+  min-height: 32px;
+  padding: 5px 16px;
+  font-size: 13px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 236, 180, 0.5);
+  background: rgba(255, 217, 94, 0.14);
+  color: #ffe9a8;
+  box-shadow: none;
+}
+#result-revive:hover {
+  background: rgba(255, 217, 94, 0.24);
+}
+
 @media (max-width: 380px) {
   .result-grid {
     grid-template-columns: 1fr;
@@ -1340,6 +1358,38 @@ body.loading #menu button {
   }
 }
 
+/* 横屏手机：结算卡片必须一屏放下（含「复活继续」与说明），键盘提示在触屏上没意义 */
+@media (max-height: 480px) {
+  .result-panel {
+    padding: 12px 14px;
+    max-height: 94vh;
+    max-height: 94dvh;
+  }
+  .result-title {
+    font-size: 20px;
+  }
+  .result-grid {
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .result-actions {
+    gap: 6px;
+    margin-top: 6px;
+  }
+  .result-actions .menu-button {
+    min-height: 38px;
+    padding: 6px 12px;
+    font-size: 14px;
+  }
+  .result-revive-note {
+    margin-top: 4px;
+    font-size: 11px;
+  }
+  .result-hint {
+    display: none;
+  }
+}
+
 @media (max-height: 460px) {
   .result-panel {
     padding: 14px 16px;
@@ -1431,5 +1481,36 @@ body.loading #menu button {
   border-radius: 2px;
   background: rgba(255, 217, 94, 0.75);
   pointer-events: none;
+}
+
+/* 复活说明：本局用过复活时提示不计入纪录 */
+.result-revive-note {
+  margin-top: 10px;
+  font-size: 12px;
+  color: rgba(255, 236, 180, 0.82);
+  text-align: center;
+  letter-spacing: 0.02em;
+}
+.result-revive-note.hidden {
+  display: none;
+}
+
+/* 历史纪录里的复活标记：复活前 = 冷色，复活后 = 暖色 */
+.score-revive {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: nowrap;
+  border: 1px solid rgba(255, 236, 180, 0.55);
+  color: rgba(255, 244, 214, 0.95);
+  background: rgba(120, 96, 60, 0.35);
+}
+.score-revive[data-tag='after'] {
+  border-color: rgba(255, 217, 94, 0.85);
+  background: rgba(255, 190, 80, 0.3);
+  color: #fff6d8;
 }
 

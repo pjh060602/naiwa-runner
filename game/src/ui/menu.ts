@@ -25,6 +25,9 @@ export interface ScoreEntry {
   date: string;
 }
 
+/** 复活相关标记：'before' = 复活前那一次死亡，'after' = 复活后继续跑到结束 */
+export type ReviveTag = 'before' | 'after';
+
 export interface HistoryEntry {
   distance: number;
   elapsed: number;
@@ -32,6 +35,7 @@ export interface HistoryEntry {
   bottles: number;
   difficulty: Settings['difficulty'];
   date: string;
+  revive?: ReviveTag;
 }
 
 const SETTINGS_KEY = 'naiwa-settings-v1';
@@ -209,6 +213,7 @@ function sanitizeHistory(value: unknown): HistoryEntry[] {
       typeof entry.date === 'string' &&
       isDifficulty(difficulty)
     ) {
+      const revive = entry.revive === 'before' || entry.revive === 'after' ? entry.revive : undefined;
       out.push({
         distance: entry.distance,
         elapsed: entry.elapsed,
@@ -216,6 +221,7 @@ function sanitizeHistory(value: unknown): HistoryEntry[] {
         bottles: entry.bottles,
         difficulty,
         date: entry.date,
+        revive,
       });
     }
   }
@@ -262,11 +268,29 @@ export function loadHistory(): HistoryEntry[] {
 }
 
 export function addHistory(entry: HistoryEntry): HistoryEntry[] {
+  // revive 标记由 addHistory 原样保存；普通成绩 entry.revive 为 undefined
   const list = loadHistory();
   list.push(entry);
   const sorted = sortHistory(list);
   writeHistory(sorted);
   console.log('[history] 写入后共 ' + sorted.length + ' 条');
+  return sorted;
+}
+
+/**
+ * 给刚写入的那条纪录打上复活标记（复活时用）：
+ * 同一条记录里，死亡那一刻先按普通成绩写入，玩家点复活后改成「复活前」，
+ * 之后复活继续跑到再次结束会再写一条「复活后」，于是一局留下两条带标记的纪录。
+ */
+export function markHistoryRevive(entry: HistoryEntry, tag: ReviveTag): HistoryEntry[] {
+  const list = loadHistory().map((row) =>
+    row.date === entry.date && row.distance === entry.distance && row.elapsed === entry.elapsed
+      ? { ...row, revive: tag }
+      : row,
+  );
+  const sorted = sortHistory(list);
+  writeHistory(sorted);
+  console.log('[history] 标记为' + (tag === 'before' ? '复活前' : '复活后') + '，共 ' + sorted.length + ' 条');
   return sorted;
 }
 
@@ -571,8 +595,12 @@ export class MenuUI {
       row.className = 'score-row';
       row.dataset.difficulty = entry.difficulty;
       const date = entry.date.slice(5, 16).replace('T', ' ');
+      const reviveBadge = entry.revive
+        ? '<span class="score-revive" data-tag="' + entry.revive + '">' + (entry.revive === 'before' ? '复活前' : '复活后') + '</span>'
+        : '';
       row.innerHTML =
         '<span class="score-date">' + date + '</span>' +
+        reviveBadge +
         '<span class="score-diff">' + DIFFICULTY_LABELS[entry.difficulty] + '</span>' +
         '<span class="score-dist">' + entry.distance + ' m</span>' +
         '<span class="score-time">' + entry.elapsed.toFixed(1) + 's</span>' +

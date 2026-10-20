@@ -564,6 +564,16 @@
           </section>
 
           <section class="guide-section">
+            <h3 class="guide-section-title">复活机制</h3>
+            <ul class="guide-list">
+              <li>被追上后，结算面板可以点「复活继续」——<strong>不限次数</strong></li>
+              <li>复活时里程 / 奶瓶 / 用时 / 速度全部保留，只把袋鼠甩回最远距离</li>
+              <li>复活演出：奶蛙升天（配音效）→ 复位捧腹大笑 → 袋鼠说台词；任意键 / 轻点屏幕可跳过</li>
+              <li><strong>记录规则</strong>：只记录「复活前」那次死亡的成绩，并在历史纪录里标上「复活前」；<strong>复活之后跑出来的成绩不记录</strong>（但照样会弹出结算面板）</li>
+            </ul>
+          </section>
+
+          <section class="guide-section">
             <h3 class="guide-section-title">追逐机制</h3>
             <ul class="guide-list">
               <li>距离开局每秒自动恢复 0.35 m（最多回到开局距离）</li>
@@ -637,9 +647,11 @@
           </div>
         </div>
         <div class="result-actions">
-          <button id="result-restart" type="button" class="menu-button primary">再跑一次</button>
+          <button id="result-revive" type="button" class="menu-button revive">复活继续</button>
+          <button id="result-restart" type="button" class="menu-button">再跑一次</button>
           <button id="result-menu" type="button" class="menu-button">返回主菜单</button>
         </div>
+        <div id="result-revive-note" class="result-revive-note hidden"></div>
         <div class="result-hint">按 R 重开 · 按 Esc 回主菜单</div>
       </div>
     </div>
