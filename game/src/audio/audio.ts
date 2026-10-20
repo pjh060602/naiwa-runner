@@ -116,110 +116,6 @@ export class AudioBus {
     return this.context ? this.context.state : 'closed';
   }
 
-  /**
-   * 微信内置浏览器（X5 / WKWebView）要求：WeixinJSBridgeReady 之后、且在真实手势里
-   * 播过一次音频，AudioContext 才会真正运行。普通浏览器点一下就能起来，微信里不行，
-   * 所以这里补一套「静音缓冲 kick」。
-   */
-  private readonly isWechat = /MicroMessenger/i.test(typeof navigator === 'undefined' ? '' : navigator.userAgent);
-  private wechatHookInstalled = false;
-  /** QQ/微信等 X5 内核：必须在真实手势里让一个 <audio> 真正 play() 过，音频通道才会打开 */
-  private silentAudio: HTMLAudioElement | null = null;
-
-  /** 生成一段 0.1s 静音 WAV 的 blob URL（不引外部文件，X5 也认） */
-  private buildSilentWavUrl(): string {
-    const sampleRate = 8000;
-    const samples = 800;
-    const buffer = new ArrayBuffer(44 + samples * 2);
-    const view = new DataView(buffer);
-    const write = (offset: number, text: string): void => {
-      for (let i = 0; i < text.length; i += 1) view.setUint8(offset + i, text.charCodeAt(i));
-    };
-    write(0, 'RIFF');
-    view.setUint32(4, 36 + samples * 2, true);
-    write(8, 'WAVE');
-    write(12, 'fmt ');
-    view.setUint32(16, 16, true);
-    view.setUint16(20, 1, true);
-    view.setUint16(22, 1, true);
-    view.setUint32(24, sampleRate, true);
-    view.setUint32(28, sampleRate * 2, true);
-    view.setUint16(32, 2, true);
-    view.setUint16(34, 16, true);
-    write(36, 'data');
-    view.setUint32(40, samples * 2, true);
-    return URL.createObjectURL(new Blob([buffer], { type: 'audio/wav' }));
-  }
-
-  /** 在真实手势里播一次静音 <audio>：X5（QQ/微信安卓）靠这个解锁媒体通道 */
-  private primeHtmlAudio(): void {
-    try {
-      if (!this.silentAudio) {
-        const element = document.createElement('audio');
-        element.setAttribute('playsinline', '');
-        element.setAttribute('webkit-playsinline', '');
-        element.loop = true;
-        element.preload = 'auto';
-        // 不要 muted：部分 X5 版本认为 muted 的元素「没真播过」，不解锁
-        element.volume = 0.001;
-        element.src = this.buildSilentWavUrl();
-        this.silentAudio = element;
-      }
-      const played = this.silentAudio.play();
-      if (played) void played.catch(() => undefined);
-    } catch {
-      /* 播不了就交给下一次手势 */
-    }
-  }
-
-  /** 播一段 1 帧静音缓冲：微信/iOS 用它把 AudioContext 从 suspended 顶到 running。 */
-  private primeSilent(context: AudioContext): void {
-    try {
-      const buffer = context.createBuffer(1, Math.ceil(context.sampleRate * 0.02), context.sampleRate);
-      const source = context.createBufferSource();
-      source.buffer = buffer;
-      source.connect(this.master ?? context.destination);
-      source.start(0);
-    } catch {
-      /* 被浏览器拒绝就算了，下一轮手势会再试 */
-    }
-  }
-
-  /** 手势里调用：resume + kick，微信和普通浏览器都安全（幂等）。 */
-  private kick(): void {
-    const context = this.context;
-    if (!context) return;
-    if (context.state !== 'running') void context.resume();
-    this.primeSilent(context);
-    this.primeHtmlAudio();
-  }
-
-  private installWechatHook(): void {
-    if (this.wechatHookInstalled) return;
-    this.wechatHookInstalled = true;
-    const bridge = (window as unknown as {
-      WeixinJSBridge?: { invoke: (name: string, params: Record<string, never>, cb?: () => void) => void };
-    }).WeixinJSBridge;
-    if (bridge) {
-      // 已存在（脚本比 bridge 晚加载）：直接调一次让它把音频通道打开
-      bridge.invoke('getNetworkType', {}, () => this.kick());
-      console.log('[audio] 微信环境：已通过 WeixinJSBridge 解锁音频');
-      return;
-    }
-    document.addEventListener(
-      'WeixinJSBridgeReady',
-      () => {
-        (window as unknown as { WeixinJSBridge?: { invoke: (n: string, p: Record<string, never>, cb?: () => void) => void } }).WeixinJSBridge?.invoke(
-          'getNetworkType',
-          {},
-          () => this.kick(),
-        );
-        console.log('[audio] 微信环境：WeixinJSBridgeReady 已触发解锁');
-      },
-      { once: true },
-    );
-  }
-
   /** 首次用户交互后调用；可重复调用。 */
   unlock(): void {
     this.unlocked = true;
@@ -244,13 +140,10 @@ export class AudioBus {
       this.noise = this.createNoiseBuffer(this.context);
       console.log('[audio] AudioContext 已创建');
     }
-    const context = this.context;
-    if (context.state === 'suspended') {
+    if (this.context.state === 'suspended') {
+      const context = this.context;
       void context.resume().then(() => console.log('[audio] AudioContext 已 resume，state=' + context.state));
     }
-    // 每次手势都补一次 kick：微信首次可能仍被挂起，用户下一次触摸会把它顶起来
-    this.kick();
-    if (this.isWechat) this.installWechatHook();
   }
 
   private createNoiseBuffer(context: AudioContext): AudioBuffer {
