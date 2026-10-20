@@ -554,13 +554,16 @@ export class Game {
       this.magnetLeft = MAGNET_TIME;
       this.buffFx.setMagnet(true);
       this.audio.play('itemMagnet');
-      console.log('[item] 拾到磁铁：8s 内吸附 8m 半径奶瓶');
+      console.log('[item] 拾到磁铁：10s 内吸附 8m 半径奶瓶');
     } else if (kind === 'firework') {
       this.player.startFly(FIREWORK_TIME);
       this.buffFx.setFly(true);
       this.wasFlying = true;
+      // 飞天直接把追兵甩到最远：袋鼠立刻退出视野、心跳床停掉
+      const chaserMax = DIFFICULTY[this.difficulty].chaserStart;
+      this.chaser.distance = chaserMax;
       this.audio.play('itemFirework');
-      console.log('[item] 拾到烟花：飞行 3s（速度 ×3，无敌）');
+      console.log(`[item] 拾到烟花：飞行 3s（速度 ×3，无敌），追兵被甩到 ${chaserMax}m`);
     } else {
       this.shieldActive = true;
       this.buffFx.setShield(true);
