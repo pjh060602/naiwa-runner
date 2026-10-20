@@ -122,6 +122,14 @@ export class Game {
   private readonly loop!: GameLoop;
   private readonly onResize = (): void => this.resize();
 
+  /** 可见视口尺寸：移动端地址栏/推荐条会把布局视口撑得比可见区域大，按 visualViewport 排版才不会被拖动。 */
+  private viewportSize(): { width: number; height: number } {
+    const vv = window.visualViewport;
+    const width = Math.round(vv?.width ?? window.innerWidth) || window.innerWidth;
+    const height = Math.round(vv?.height ?? window.innerHeight) || window.innerHeight;
+    return { width, height };
+  }
+
   private state: GameState = 'boot';
   private difficulty: Settings['difficulty'] = 'standard';
   private paused = false;
@@ -190,13 +198,14 @@ export class Game {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 0.95;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    const initialViewport = this.viewportSize();
+    this.renderer.setSize(initialViewport.width, initialViewport.height);
     host.appendChild(this.renderer.domElement);
 
     this.scene.background = new THREE.Color(0xdcefff);
     this.scene.fog = new THREE.Fog(0xdcefff, 40, 280);
 
-    this.camera = new THREE.PerspectiveCamera(FOV_NEAR, window.innerWidth / window.innerHeight, 0.1, 420);
+    this.camera = new THREE.PerspectiveCamera(FOV_NEAR, initialViewport.width / initialViewport.height, 0.1, 420);
     this.camera.position.set(0, CAM_HEIGHT, CAM_BACK);
 
 
@@ -314,6 +323,9 @@ export class Game {
       if (document.hidden && this.state === 'running' && !this.paused) this.pause();
     });
     window.addEventListener('resize', this.onResize);
+    // 移动端浏览器条显隐会改变可见视口但不一定触发 resize，单独监听 visualViewport
+    window.visualViewport?.addEventListener('resize', this.onResize);
+    window.visualViewport?.addEventListener('scroll', this.onResize);
 
     if (options.bench) {
       this.runBench();
@@ -1007,8 +1019,9 @@ export class Game {
   }
 
   private resize(): void {
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.camera.aspect = window.innerWidth / window.innerHeight;
+    const { width, height } = this.viewportSize();
+    this.renderer.setSize(width, height);
+    this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
   }
 
@@ -1093,6 +1106,8 @@ export class Game {
     this.loop.stop();
     this.input.dispose();
     window.removeEventListener('resize', this.onResize);
+    window.visualViewport?.removeEventListener('resize', this.onResize);
+    window.visualViewport?.removeEventListener('scroll', this.onResize);
     this.audio.stopClip();
     this.audio.stopBgm();
     this.audio.stopChaseBed();
