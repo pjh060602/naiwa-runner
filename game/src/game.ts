@@ -601,9 +601,9 @@ export class Game {
       this.buffFx.setShield(false);
       this.buffFx.shieldBreak();
       this.invulnUntil = Math.max(this.invulnUntil, this.elapsed + SHIELD_BREAK_INVULN);
-      this.player.stagger();
+      // 护盾挡下时不减速：连 sustained 的速度惩罚也不给
       this.audio.play('shieldBreak');
-      console.log(`[shield] 护盾抵挡 ${label}：不扣距离、不加撞击，0.4s 无敌`);
+      console.log(`[shield] 护盾抵挡 ${label}：不扣距离、不加撞击、不减速，0.4s 无敌`);
       return;
     }
     this.applyHit(label);
