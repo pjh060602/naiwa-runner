@@ -1,15 +1,15 @@
 # 项目现状与接手说明（新会话从这里开始）
 
 > 这份文件是给"下一个我"看的。上下文会滚掉，**文件不会**。
-> 最后更新：2026-10-20 —— 已提交到本地 `master`（最新 `bef43aa5`，含音效/BGM、难度三档、暂停、历史纪录、视觉、标题页、袋鼠换肤、引导教程、结算双按钮、心跳警示、滚动指示条；外加两个音频 bug 修复）。**尚未推送**：GitHub 上的 `naiwa-runner` 已被用户删除，要上线时重建仓库再推。工作区已清理（详见「十一、工作区结构」）。
+> 最后更新：2026-10-20 —— **v1.0.0 第一个大版本**：撞墙惩罚、磁铁 / 烟花 / 护盾三种道具、道具发光、buff 挂身特效、HUD buff 行、手机轻点跳过演出、影子抖动修复。已推送到 `origin/master` 并由 GitHub Actions 发布到 `https://pjh060602.github.io/naiwa-runner/`。
 
 ## 零、一分钟看懂当前状态（新会话先读这段）
 
 | 项 | 值 |
 |---|---|
 | 代码位置 | `game/`（TypeScript + Vite + Three.js，无后端） |
-| 本地分支 / 最新提交 | `master` / `bef43aa5` |
-| 远端 | 无（GitHub 仓库已被用户删除；`origin` 仍配置为 `https://github.com/pjh060602/naiwa-runner.git`，重建同名空仓库即可直接 push） |
+| 本地分支 / 最新提交 | `master`（版本 `1.0.0`，最新提交看 `git log -1`） |
+| 远端 / 线上 | `origin = https://github.com/pjh060602/naiwa-runner.git`；线上 `https://pjh060602.github.io/naiwa-runner/`（GitHub Pages，Source = GitHub Actions） |
 | 能跑吗 | 能：`cd game && npm run play` → http://localhost:5173/ |
 | 类型/逻辑/构建 | `npx tsc --noEmit` · `npm run verify:logic`（45 条断言全 PASS）· `npm run build` |
 | 已知未修问题 | 见「八、待办」第 2 条（总开关已修，当前无已知 P0） |
@@ -25,8 +25,9 @@ game/src/
   core/            config.ts（数值/难度表）、input.ts（键盘+滑动）、loop.ts、assets.ts、palette.ts
   player/          player.ts（跑跳滑铲/肚皮滑行）、collision.ts、rig.ts
   character/       chaser.ts（袋鼠换肤 setSkin）、naiwa-*.ts（奶蛙纸片人）
-  world/           track.ts（跑道+栏杆）、park.ts（道具流）、director.ts（障碍节奏）、chaser.ts（ChaseModel/ChaseView/loadChaser）、
-                   obstacles.ts、collectibles.ts、stage.ts（演出）、glow.ts、props/**（场景美术）、backdrop/**（海天远景）
+  world/           track.ts（跑道+栏杆）、park.ts（道具流）、director.ts（障碍节奏）、buff-fx.ts（磁铁/护盾/飞行挂身特效）、
+                   obstacles.ts、collectibles.ts（奶瓶 + 道具对象池 + 道具发光）、stage.ts（演出）、glow.ts、
+                   props/**（场景美术；props/items.ts = 磁铁/火箭/骑士盾模型）、backdrop/**（海天远景）
   ui/              menu.ts（菜单/难度/历史/换肤/教程/滚动指示器）、overlay.ts（结算）、hud.ts
 game/public/models/  奶蛙与袋鼠贴图（含 kang_gdut_tex.png 广工袋鼠）
 game/public/audio/   笑声与袋鼠台词 mp3
@@ -39,6 +40,18 @@ game/scripts/verify-logic.ts  无浏览器逻辑断言（碰撞矩阵/演出时�
 2. 视觉/交互改动要给出**可量化证据**（元素 rect、无重叠、无横向溢出、双视口截图），别只说"看起来好了"。
 3. 手机兼容：`dvh` 一律配 `vh` 兜底（老 iOS Safari / 安卓 WebView 不支持 dvh，会让高度限制整条失效）。
 4. 提交前确认 `.gitignore` 覆盖新增的本地产物；不要提交 `.venv-ml/`、`.tmp/`、`shots/`、`game/dist/`。
+
+### v1.0 新增玩法（改数值先看这里，别和回归基线打架）
+
+| 机制 | 规则 | 关键常量（`core/config.ts`） |
+|---|---|---|
+| 撞墙 | 第一/第三跑道继续向外平移＝撞障碍；护盾可挡 | `WALL_BUMP_COOLDOWN = 0.6` |
+| 磁铁 | 8s 内 8m 范围奶瓶被吸向玩家并计数 | `MAGNET_TIME = 8`、`MAGNET_COLLECT_RADIUS = 0.75` |
+| 烟花 | 3s 超高速（约 3×）冲刺，穿障碍无敌，落地 0.5s 缓冲 | `FIREWORK_TIME = 3` |
+| 护盾 | 抵挡任意一次撞击（含撞墙），破碎 0.4s 无敌 | `SHIELD_BREAK_INVULN = 0.4` |
+| 道具刷新 | 低概率随机，三种均等，间隔 150–300m | `ITEM_GAP = [150, 300]`、`ITEM_FIRST_Z = -140` |
+
+**新增 `scripts` 之外的验收脚本注意**：改 `collectibles.ts` 的 `ItemField` 时，node 环境没有 `document`，发光层已用 `typeof document !== 'undefined'` 守卫，别去掉。
 
 ## 一、这是什么
 

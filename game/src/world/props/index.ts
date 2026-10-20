@@ -23,6 +23,8 @@ import { createUmbrellaGeometry } from './umbrella';
 export { MeshBuilder } from './build';
 export type { PartOptions, SheetOptions, V3 } from './build';
 
+export { buildFireworkItem, buildMagnetItem, buildShieldItem } from './items';
+
 /**
  * 场景道具 + 障碍物外形（每个 = 单个已合并、带顶点色的 BufferGeometry，场景里 1 次 draw call）。
  * 尺寸、碰撞盒与三角面预算见 props/README.md；这里只导出成品，跑一次就不再重建。

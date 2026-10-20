@@ -20,9 +20,17 @@ import {
   CLIP_LAUGH_URL,
   DIFFICULTY,
   FIXED_DT,
+  FIREWORK_LANDING_GRACE,
+  FIREWORK_SPEED_MULT,
+  FIREWORK_TIME,
   FOV_FAR,
   FOV_NEAR,
   INTRO_FIRST_OBSTACLE_DELAY,
+  ITEM_PICKUP_RADIUS,
+  MAGNET_RADIUS,
+  MAGNET_TIME,
+  SHIELD_BREAK_INVULN,
+  WALL_BUMP_COOLDOWN,
   LANE_CENTERS,
   MILESTONE_EVERY,
   SPEED_BASE,
@@ -43,7 +51,9 @@ import { Hud } from './ui/hud';
 import { ResultsPanel } from './ui/overlay';
 import { MenuUI, bestHistory, loadHistory, loadScores, MIN_SCORE_DISTANCE } from './ui/menu';
 import type { Settings } from './ui/menu';
-import { BottleField } from './world/collectibles';
+import { BottleField, ItemField } from './world/collectibles';
+import type { ItemKind } from './world/collectibles';
+import { BuffFx } from './world/buff-fx';
 import { LevelDirector } from './world/director';
 import { ObstacleField } from './world/obstacles';
 import type { ObstacleKind, ObstacleRecord } from './world/obstacles';
@@ -105,6 +115,8 @@ export class Game {
   private readonly footShadows: THREE.Mesh[] = [];
   private readonly obstacles: ObstacleField;
   private readonly bottles: BottleField;
+  private readonly items: ItemField;
+  private readonly buffFx: BuffFx;
   private readonly director: LevelDirector;
   private readonly chaser = new ChaseModel();
   private readonly chaserView: ChaserView;
@@ -146,7 +158,12 @@ export class Game {
   private rigState: NaiwaState = 'idle';
   private bottleCount = 0;
   private boostLeft = 0;
+  private magnetLeft = 0;
+  private shieldActive = false;
   private hits = 0;
+  private bumpCooldownUntil = 0;
+  private invulnUntil = 0;
+  private wasFlying = false;
   private stepTimer = 0;
   private lastPassed = 0;
   private dodgeStreak = 0;
@@ -254,6 +271,11 @@ export class Game {
     this.bottles = new BottleField();
     this.bottles.setBlockCheck((x, z) => this.park.isBlocked(x, z, 0.8));
     this.scene.add(this.bottles.group);
+    this.items = new ItemField();
+    this.items.setBlockCheck((x, z) => this.park.isBlocked(x, z, 0.9));
+    this.items.setLaneBusy((lane, z) => this.obstacles.laneBusy(lane, z, 6));
+    this.scene.add(this.items.group);
+    this.buffFx = new BuffFx(this.rig.root);
     this.director = new LevelDirector(this.obstacles, this.bottles, this.rng);
 
     this.overlay = new ResultsPanel(() => this.restart(), () => this.backToMenu());
@@ -373,6 +395,7 @@ export class Game {
       this.speed =
         speedAt(this.elapsed) *
         this.player.speedMult *
+        (this.player.flying ? FIREWORK_SPEED_MULT : 1) *
         (this.boostLeft > 0 ? BOOST_MULT : 1) *
         this.player.staggerMult *
         DIFFICULTY[this.difficulty].speedScale;
@@ -386,8 +409,15 @@ export class Game {
       this.obstacles.update(dt, this.player.z);
       this.director.update(this.player.z);
       this.bottles.update(dt, this.player.z);
+      this.items.update(dt, this.player.z, this.rng);
+      this.updateBuffs(dt);
       this.countDodges();
       this.collectBottles();
+      this.collectItems();
+      if (this.magnetLeft > 0) {
+        const gained = this.bottles.attract(this.player.x, this.player.z, MAGNET_RADIUS, dt);
+        if (gained > 0) this.gainBottles(gained);
+      }
       this.footsteps(dt);
       this.checkMilestones();
       const chaserMax = DIFFICULTY[this.difficulty].chaserStart;
@@ -406,8 +436,9 @@ export class Game {
       }
       this.kangWasVisible = kangVisible;
       if (this.bot) this.autoPilot();
-      const hit = this.obstacles.hits(this.player.aabb());
+      const hit = this.isInvulnerable() ? null : this.obstacles.hits(this.player.aabb());
       if (hit) this.takeHit(hit);
+      this.buffFx.update(dt, clamp01(1 - this.chaser.distance / this.chaser.visibleRange));
       this.hud.update({
         distance: this.distance,
         speed: this.speed,
@@ -419,6 +450,9 @@ export class Game {
         chaserDistance: this.chaser.distance,
         chaserMax,
         chaserDanger: this.chaser.danger,
+        magnetLeft: this.magnetLeft,
+        shieldActive: this.shieldActive,
+        flyLeft: this.player.flying ? Math.max(0, this.player.flyLeft) : 0,
       });
     }
 
@@ -495,7 +529,10 @@ export class Game {
   }
 
   private collectBottles(): void {
-    const gained = this.bottles.collect(this.player.x, this.player.z, 0.9);
+    this.gainBottles(this.bottles.collect(this.player.x, this.player.z, 0.9));
+  }
+
+  private gainBottles(gained: number): void {
     if (gained <= 0) return;
     this.bottleCount += gained;
     this.audio.play('bottle');
@@ -506,16 +543,81 @@ export class Game {
     }
   }
 
+  private collectItems(): void {
+    const kind = this.items.collect(this.player.x, this.player.z, ITEM_PICKUP_RADIUS);
+    if (!kind) return;
+    this.pickupItem(kind);
+  }
+
+  private pickupItem(kind: ItemKind): void {
+    if (kind === 'magnet') {
+      this.magnetLeft = MAGNET_TIME;
+      this.buffFx.setMagnet(true);
+      this.audio.play('itemMagnet');
+      console.log('[item] 拾到磁铁：8s 内吸附 8m 半径奶瓶');
+    } else if (kind === 'firework') {
+      this.player.startFly(FIREWORK_TIME);
+      this.buffFx.setFly(true);
+      this.wasFlying = true;
+      this.audio.play('itemFirework');
+      console.log('[item] 拾到烟花：飞行 3s（速度 ×3，无敌）');
+    } else {
+      this.shieldActive = true;
+      this.buffFx.setShield(true);
+      this.audio.play('itemShield');
+      console.log('[item] 拾到护盾：抵挡下一次撞击');
+    }
+  }
+
+  /** 逐帧维护 buff 计时与特效开关；飞行落地后给 0.5s 缓冲无敌。 */
+  private updateBuffs(dt: number): void {
+    if (this.magnetLeft > 0) {
+      this.magnetLeft = Math.max(0, this.magnetLeft - dt);
+      if (this.magnetLeft === 0) this.buffFx.setMagnet(false);
+    }
+    const flying = this.player.flying;
+    if (flying && !this.wasFlying) this.buffFx.setFly(true);
+    if (!flying && this.wasFlying) {
+      this.buffFx.setFly(false);
+      this.invulnUntil = Math.max(this.invulnUntil, this.elapsed + FIREWORK_LANDING_GRACE);
+    }
+    this.wasFlying = flying;
+  }
+
+  private isInvulnerable(): boolean {
+    return this.player.flying || this.elapsed < this.invulnUntil;
+  }
+
   private takeHit(record: ObstacleRecord): void {
     if (record.consumed) return;
     record.consumed = true;
+    this.inflictHit(record.label ?? record.kind);
+  }
+
+  /** 所有撞击的公共入口：护盾在就先破盾（免罚 + 0.4s 无敌），否则走撞障碍/撞墙惩罚。 */
+  private inflictHit(label: string): void {
+    if (this.shieldActive) {
+      this.shieldActive = false;
+      this.buffFx.setShield(false);
+      this.buffFx.shieldBreak();
+      this.invulnUntil = Math.max(this.invulnUntil, this.elapsed + SHIELD_BREAK_INVULN);
+      this.player.stagger();
+      this.audio.play('shieldBreak');
+      console.log(`[shield] 护盾抵挡 ${label}：不扣距离、不加撞击，0.4s 无敌`);
+      return;
+    }
+    this.applyHit(label);
+  }
+
+  /** 撞障碍与撞墙共用：hits+1、踉跄、追兵拉近、音效、被追上判定。 */
+  private applyHit(label: string): void {
     this.hits += 1;
     this.player.stagger();
     const hitPull = DIFFICULTY[this.difficulty].hitPull;
     this.chaser.distance -= hitPull;
     this.audio.play('hit');
     console.log(
-      `[chase] 撞到 ${record.label ?? record.kind} → 玩家踉跄 0.35s（速度 ×0.6），追兵拉近 ${hitPull}m，还剩 ${this.chaser.distance.toFixed(1)}m`,
+      `[chase] 撞到 ${label} → 玩家踉跄 0.35s（速度 ×0.6），追兵拉近 ${hitPull}m，还剩 ${this.chaser.distance.toFixed(1)}m`,
     );
     if (this.chaser.caught) this.startCaught();
   }
@@ -580,7 +682,9 @@ export class Game {
 
   private updateRig(dt: number): void {
     let next: NaiwaState;
-    if (this.player.staggering) next = 'hit';
+    // 飞行优先：必须切到飞天贴图，否则飞着还是普通形象
+    if (this.player.flying) next = 'fly';
+    else if (this.player.staggering) next = 'hit';
     else if (this.player.sliding) next = 'slide';
     else if (!this.player.grounded) next = this.player.vy > 0 ? 'jump' : 'fall';
     else next = 'run';
@@ -662,8 +766,10 @@ export class Game {
     if (this.handleFirstInput()) return;
     if (intent === 'left') {
       if (this.player.moveLane(-1)) this.audio.play('lane');
+      else this.handleWallBump();
     } else if (intent === 'right') {
       if (this.player.moveLane(1)) this.audio.play('lane');
+      else this.handleWallBump();
     } else if (intent === 'jump') {
       const stage = this.player.jump();
       if (stage === 1) this.audio.play('jump');
@@ -674,6 +780,16 @@ export class Game {
     } else if (intent === 'slideStart') {
       if (this.player.pressSlide()) this.audio.play('slide');
     } else if (intent === 'slideEnd') this.player.releaseSlide();
+  }
+
+  /** 越界换道（撞墙）惩罚：0.6s 冷却内不重复扣。 */
+  private handleWallBump(): void {
+    if (!this.player.consumeBump()) return;
+    if (this.isInvulnerable()) return;
+    if (this.elapsed < this.bumpCooldownUntil) return;
+    this.bumpCooldownUntil = this.elapsed + WALL_BUMP_COOLDOWN;
+    // 走统一入口：撞墙同样能被护盾挡下（护盾挡任意一次撞击）
+    this.inflictHit('赛道边缘');
   }
 
   private handleFirstInput(): boolean {
@@ -697,6 +813,21 @@ export class Game {
     console.log('[menu] 启动即进入主菜单');
   }
 
+  /** 清空所有 buff 状态并停掉特效：startRun / 回主菜单 / 被追上时调用。 */
+  private resetBuffs(): void {
+    this.magnetLeft = 0;
+    this.shieldActive = false;
+    this.bumpCooldownUntil = 0;
+    this.invulnUntil = 0;
+    this.wasFlying = false;
+    this.buffFx.setMagnet(false);
+    this.buffFx.setShield(false);
+    this.buffFx.setFly(false);
+    // 推一格让 fade 立刻收尾，避免菜单/过场里特效残留
+    this.buffFx.update(0.3, 0);
+    this.items.reset();
+  }
+
   private startRun(): void {
     this.paused = false;
     this.audio.stopChaseBed();
@@ -708,6 +839,7 @@ export class Game {
     this.bottleCount = 0;
     this.boostLeft = 0;
     this.hits = 0;
+    this.resetBuffs();
     this.milestoneNext = MILESTONE_EVERY;
     this.obstacles.reset();
     this.bottles.reset();
@@ -856,6 +988,9 @@ export class Game {
       chaserDistance: pose.chaserGap,
       chaserMax: DIFFICULTY[this.difficulty].chaserStart,
       chaserDanger: pose.chaserGap < CHASER_VISIBLE_RANGE,
+      magnetLeft: 0,
+      shieldActive: false,
+      flyLeft: 0,
     });
     this.pushX(this.player.x);
   }
@@ -902,6 +1037,7 @@ export class Game {
 
   private startCaught(): void {
     this.audio.stopChaseBed();
+    this.resetBuffs();
     console.log(`[caught] 被追上（距离 ${Math.floor(this.distance)}m，奶瓶 ${this.bottleCount}，撞击 ${this.hits} 次）→ 收尾演出`);
     this.beginSequence(['caught-line', 'caught-laugh'], 'caught');
   }
@@ -945,6 +1081,7 @@ export class Game {
     this.paused = false;
     if (this.state !== 'result' && this.state !== 'running' && this.state !== 'caught') return;
     this.audio.stopChaseBed();
+    this.resetBuffs();
     this.state = 'menu';
     this.overlay.hide();
     this.menu.show();
@@ -1126,6 +1263,8 @@ export class Game {
     this.audio.stopBgm();
     this.audio.stopChaseBed();
     this.backdrop.dispose();
+    this.buffFx.dispose();
+    this.items.dispose();
     this.rig.dispose();
     this.renderer.dispose();
   }

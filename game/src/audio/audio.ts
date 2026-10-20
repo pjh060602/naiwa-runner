@@ -12,7 +12,11 @@ export type SfxName =
   | 'impact'
   | 'ui'
   | 'lane'
-  | 'kangAppear';
+  | 'kangAppear'
+  | 'itemMagnet'
+  | 'itemFirework'
+  | 'itemShield'
+  | 'shieldBreak';
 
 const MASTER_GAIN = 0.55;
 const CLIP_GAIN = 0.85;
@@ -218,6 +222,25 @@ export class AudioBus {
     } else if (name === 'milestone') {
       this.tone(context, bus, now, 'sine', 784, 784, 0.14, 0.14);
       this.tone(context, bus, now + 0.13, 'sine', 1046, 1046, 0.2, 0.14);
+    } else if (name === 'itemMagnet') {
+      // 磁铁：中频上升「吸」感 + 高频闪烁，峰值分频不叠加
+      this.tone(context, bus, now, 'triangle', 620, 1240, 0.18, 0.15);
+      this.tone(context, bus, now + 0.04, 'sine', 988, 1480, 0.12, 0.1);
+      this.noiseBurst(context, bus, now, 0.07, 3200, 0.07);
+    } else if (name === 'itemFirework') {
+      // 烟花：短促上升 whoosh + 高音爆点
+      this.noiseBandSweep(context, bus, now, 0.22, 1600, 4200, 2.0, 0.13);
+      this.tone(context, bus, now, 'sawtooth', 220, 660, 0.2, 0.09);
+      this.tone(context, bus, now + 0.18, 'sine', 880, 1320, 0.12, 0.12);
+    } else if (name === 'itemShield') {
+      // 护盾：两音柔和钟声
+      this.tone(context, bus, now, 'sine', 784, 784, 0.14, 0.11);
+      this.tone(context, bus, now + 0.07, 'sine', 1175, 1175, 0.16, 0.09);
+    } else if (name === 'shieldBreak') {
+      // 护盾破碎：玻璃碎裂噪声 + 短促下坠方波
+      this.noiseBurst(context, bus, now, 0.05, 2400, 0.2);
+      this.noiseBurst(context, bus, now + 0.03, 0.08, 1200, 0.16);
+      this.tone(context, bus, now, 'square', 1046, 520, 0.12, 0.1);
     } else {
       this.tone(context, bus, now, 'sine', 660, 660, 0.08, 0.12);
     }

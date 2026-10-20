@@ -85,6 +85,25 @@ export const RHYTHM_EVERY = 250;
 export const RHYTHM_COUNT = 3;
 export const RHYTHM_GAP = 15;
 
+// 道具与 buff（磁铁 / 烟花 / 护盾）：低频刷新，间隔 150–300m
+export const ITEM_FIRST_Z = -140;
+export const ITEM_SPAWN_AHEAD = 220;
+export const ITEM_GAP: readonly [number, number] = [150, 300];
+export const ITEM_FLOAT_Y = 1.05;
+export const ITEM_PICKUP_RADIUS = 0.9;
+
+export const MAGNET_TIME = 8;
+export const MAGNET_RADIUS = 8;
+export const MAGNET_ATTRACT_SPEED = 16;
+export const MAGNET_COLLECT_RADIUS = 0.75;
+
+export const FIREWORK_TIME = 3;
+export const FIREWORK_SPEED_MULT = 3;
+export const FIREWORK_LANDING_GRACE = 0.5;
+
+export const SHIELD_BREAK_INVULN = 0.4;
+export const WALL_BUMP_COOLDOWN = 0.6;
+
 // 收集物：奶瓶
 export const BOTTLE_PER_BOOST = 20;
 export const BOOST_MULT = 1.25;

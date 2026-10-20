@@ -17,7 +17,9 @@ const DAMP = 12;
 
 const damp = (c: number, t: number, l: number, dt: number): number => c + (t - c) * (1 - Math.exp(-l * dt));
 
-type TexKey = 'front' | 'laugh' | 'slide' | 'jump';
+type TexKey = 'front' | 'laugh' | 'slide' | 'jump' | 'fly';
+/** 奶蛙第 5 个状态名：'fly'（飞行）。只在 billboard 内部使用，NaiwaState 由外部扩展。 */
+type BillboardState = NaiwaState | 'fly';
 
 export function createNaiwaBillboard(): NaiwaRig {
   const root = new Group();
@@ -53,8 +55,9 @@ export function createNaiwaBillboard(): NaiwaRig {
   load('laugh', 'naiwa_laugh_tex.png');
   load('slide', 'naiwa_slide_tex.png');
   load('jump', 'naiwa_jump_tex.png');
+  load('fly', 'naiwa_fly_tex.png');
 
-  let state: NaiwaState = 'idle';
+  let state: BillboardState = 'idle';
   let bellySlide = false;
   let look: 'auto' | 'laugh' = 'auto';
   let clock = 0;
@@ -69,6 +72,7 @@ export function createNaiwaBillboard(): NaiwaRig {
 
   const pick = (): TexKey => {
     if (look === 'laugh') return 'laugh';
+    if (state === 'fly') return 'fly';
     if (state === 'slide' || bellySlide) return 'slide';
     if (jumpStage === 2) return 'jump';
     return 'front';
@@ -76,7 +80,7 @@ export function createNaiwaBillboard(): NaiwaRig {
 
   return {
     root,
-    setState(next: NaiwaState) { state = next; },
+    setState(next: BillboardState) { state = next; },
     // 跑步起伏已关闭（见 update），速度比暂时没有使用者
     setSpeed(_ratio: number) {},
     setBellySlide(active: boolean) { bellySlide = active; },
@@ -135,6 +139,9 @@ export function createNaiwaBillboard(): NaiwaRig {
           case 'startle':
             squashT = 0.9; leanT = 0.20;
             break;
+          case 'fly':
+            squashT = 1.02; leanT = -0.04;
+            break;
           default:
             squashT = 1 + Math.sin(clock * Math.PI * 1.5) * 0.015;
             break;
@@ -162,6 +169,7 @@ export function createNaiwaBillboard(): NaiwaRig {
       textures.laugh?.dispose();
       textures.slide?.dispose();
       textures.jump?.dispose();
+      textures.fly?.dispose();
     },
   };
 }

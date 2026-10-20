@@ -25,6 +25,14 @@ const easeInOutQuad = (t: number): number => (t < 0.5 ? 2 * t * t : 1 - ((-2 * t
 const SLIDE_BUFFER = 0.15;
 /** 二段跳初速倍率：9.0 → 7.2，像空中再蹬一下 */
 const DOUBLE_JUMP_MULT = 1.05;
+/** 飞行抬升目标高度（脚底离地，米） */
+const FLY_HEIGHT = 1.2;
+/** 飞行抬升阻尼速率：帧率无关的指数平滑，避免瞬间跳 */
+const FLY_RISE_RATE = 6;
+/** 飞行结束回落阻尼速率：平滑落回地面，避免抖动 */
+const FLY_FALL_RATE = 10;
+const damp = (current: number, target: number, rate: number, dt: number): number =>
+  current + (target - current) * (1 - Math.exp(-rate * dt));
 
 /**
  * 三车道玩家状态机 + 抛物线竖直物理 + AABB。
@@ -40,6 +48,12 @@ export class Player {
   sliding = false;
   belly = false;
   height: number = PLAYER_HEIGHT;
+  /** 飞行状态：空中不施加重力，平滑抬升/回落 */
+  flying = false;
+  /** 飞行剩余时间（秒） */
+  flyLeft = 0;
+  /** 撞墙信号：moveLane 越界时置 true，供 game.ts 消费做惩罚 */
+  lastBump = false;
 
   prevX = 0;
   prevY = 0;
@@ -102,6 +116,9 @@ export class Player {
     this.sliding = false;
     this.belly = false;
     this.height = PLAYER_HEIGHT;
+    this.flying = false;
+    this.flyLeft = 0;
+    this.lastBump = false;
     this.moving = false;
     this.moveElapsed = 0;
     this.moveDuration = LANE_CHANGE_TIME;
@@ -115,10 +132,22 @@ export class Player {
     this.staggerLeft = 0;
   }
 
-  /** 换道：真位移，缓动 0.16s；肚皮滑行时 ×1.4 变笨 */
+  /** 撞墙信号消费：取走当前标记并清零，供 game.ts 惩罚用 */
+  consumeBump(): boolean {
+    const bump = this.lastBump;
+    this.lastBump = false;
+    return bump;
+  }
+
+  /** 换道：真位移，缓动 0.16s；肚皮滑行时 ×1.4 变笨。飞行中不允许换道且不报 bump。 */
   moveLane(dir: -1 | 1): boolean {
+    if (this.flying) return false;
     const nextLane = Math.min(LANE_CENTERS.length - 1, Math.max(0, this.lane + dir));
-    if (nextLane === this.lane) return false;
+    if (nextLane === this.lane) {
+      this.lastBump = true;
+      return false;
+    }
+    this.lastBump = false;
     this.lane = nextLane;
     this.moveFromX = this.x;
     this.moveToX = LANE_CENTERS[nextLane];
@@ -133,6 +162,7 @@ export class Player {
    * 返回本次是第几段（0 = 本次没跳成），调用方据此外放音效与贴图。
    */
   jump(): 0 | 1 | 2 {
+    if (this.flying) return 0;
     if (!this.grounded && this.jumpsUsed >= 2) return 0;
     const stage: 1 | 2 = this.grounded ? 1 : 2;
     if (this.sliding) this.endSlide(false);
@@ -150,6 +180,7 @@ export class Player {
 
   /** 按下 ↓：起滑（轻点=普通滑铲，按住 0.15s 后升级为肚皮滑行） */
   pressSlide(): boolean {
+    if (this.flying) return false;
     if (this.sliding || this.cooldown > 0) return false;
     if (!this.grounded) {
       // 空中按下：不取消跳跃、也不会滑，只记 0.15s，落地当帧生效
@@ -190,6 +221,23 @@ export class Player {
       this.vy = Math.sqrt(2 * GRAVITY * BELLY_POP_HEIGHT);
       this.grounded = false;
     }
+  }
+
+  /** 进入飞行：抬到 1.2m 左右并保持；期间禁跳/禁滑/禁换道 */
+  startFly(duration: number): void {
+    if (this.sliding) this.endSlide(false);
+    if (!this.flying) {
+      this.flying = true;
+      this.vy = 0;
+      this.grounded = false;
+      this.slideBuffer = 0;
+    }
+    this.flyLeft = Math.max(0, duration);
+  }
+
+  /** 结束飞行：归零剩余时间，由 update() 平滑落回地面，落地后才把 flying 置 false */
+  stopFly(): void {
+    this.flyLeft = 0;
   }
 
   advance(dz: number): void {
@@ -235,7 +283,21 @@ export class Player {
 
     if (this.slideBuffer > 0) this.slideBuffer = Math.max(0, this.slideBuffer - dt);
 
-    if (!this.grounded) {
+    if (this.flying) {
+      if (this.flyLeft > 0) this.flyLeft = Math.max(0, this.flyLeft - dt);
+      const landing = this.flyLeft <= 0;
+      const targetY = landing ? 0 : FLY_HEIGHT;
+      const rate = landing ? FLY_FALL_RATE : FLY_RISE_RATE;
+      this.y = damp(this.y, targetY, rate, dt);
+      if (landing && this.y <= 0.02) {
+        this.y = 0;
+        this.vy = 0;
+        this.grounded = true;
+        this.flying = false;
+        this.jumpsUsed = 0;
+        this.slideBuffer = 0;
+      }
+    } else if (!this.grounded) {
       this.vy -= GRAVITY * dt;
       this.y += this.vy * dt;
       if (this.y <= 0) {

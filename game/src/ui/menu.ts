@@ -332,7 +332,7 @@ export class MenuUI {
 
   constructor(private readonly handlers: MenuHandlers) {
     this.settings = loadSettings();
-    this.versionLabel.textContent = 'v0.4 · 本地历史纪录';
+    this.versionLabel.textContent = 'v1.0 · 本地历史纪录';
 
     mustGet('menu-start').addEventListener('click', () => {
       this.hide();

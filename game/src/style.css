@@ -346,6 +346,50 @@ body.menu-open #ambient {
   transition: width 0.08s linear;
 }
 
+/* buff 小标签行：放在 HUD 底部，整行无 buff 时隐藏 */
+.hud-buffs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 2px;
+}
+
+.hud-buffs.hidden {
+  display: none;
+}
+
+.hud-buff {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: #f2f4f8;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+  white-space: nowrap;
+}
+
+.hud-buff.hidden {
+  display: none;
+}
+
+.hud-buff-magnet {
+  color: #ffd98a;
+  border-color: rgba(255, 190, 90, 0.45);
+}
+
+.hud-buff-shield {
+  color: #9fe2ff;
+  border-color: rgba(120, 200, 255, 0.45);
+}
+
+.hud-buff-fly {
+  color: #ff9ecb;
+  border-color: rgba(255, 130, 190, 0.45);
+}
+
 /* ── 过场 / 开场 ── */
 #fade {
   position: fixed;
@@ -1195,6 +1239,11 @@ body.loading #menu button {
   .hud-state {
     font-size: 10px;
     min-height: 13px;
+  }
+
+  .hud-buff {
+    font-size: 10px;
+    padding: 1px 6px;
   }
 
   #hud-pause {
