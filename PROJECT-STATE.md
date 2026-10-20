@@ -46,10 +46,14 @@ game/scripts/verify-logic.ts  无浏览器逻辑断言（碰撞矩阵/演出时�
 | 机制 | 规则 | 关键常量（`core/config.ts`） |
 |---|---|---|
 | 撞墙 | 第一/第三跑道继续向外平移＝撞障碍；护盾可挡 | `WALL_BUMP_COOLDOWN = 0.6` |
-| 磁铁 | 8s 内 8m 范围奶瓶被吸向玩家并计数 | `MAGNET_TIME = 8`、`MAGNET_COLLECT_RADIUS = 0.75` |
-| 烟花 | 3s 超高速（约 3×）冲刺，穿障碍无敌，落地 0.5s 缓冲 | `FIREWORK_TIME = 3` |
-| 护盾 | 抵挡任意一次撞击（含撞墙），破碎 0.4s 无敌 | `SHIELD_BREAK_INVULN = 0.4` |
-| 道具刷新 | 低概率随机，三种均等，间隔 150–300m | `ITEM_GAP = [150, 300]`、`ITEM_FIRST_Z = -140` |
+| 磁铁 | 10s 内 8m 范围奶瓶被吸向玩家并计数 | `MAGNET_TIME = 10`、`MAGNET_COLLECT_RADIUS = 0.75` |
+| 烟花 | 3s 超高速（约 3×）冲刺，穿障碍无敌；拾取瞬间把追兵甩到最远 | `FIREWORK_TIME = 3` |
+| 护盾 | 抵挡任意一次撞击（含撞墙）：不扣距离、不加撞击、**不减速**，破碎 0.4s 无敌 | `SHIELD_BREAK_INVULN = 0.4` |
+| 撞墙回弹 | 撞到跑道边缘时身体朝栏杆顶出约 0.3m 再弹回（纯视觉，不改碰撞盒） | `BUMP_NUDGE`（player.ts） |
+| 道具刷新 | 低概率随机，三种均等，间隔 190–360m | `ITEM_GAP = [190, 360]`、`ITEM_FIRST_Z = -140` |
+
+**障碍分档权重铁律**：`world/director.ts` 的 `WEIGHTS` 里，near / mid / dense 三档都必须同时保留「只能跳」和「只能滑铲」两类解法。
+v1.0.3 之前 dense 档漏了 `fence`（高门架 = 游泳圈木架子），导致 900m 之后这类障碍彻底消失；现在 `npm run verify:logic` 有断言守着。
 
 **新增 `scripts` 之外的验收脚本注意**：改 `collectibles.ts` 的 `ItemField` 时，node 环境没有 `document`，发光层已用 `typeof document !== 'undefined'` 守卫，别去掉。
 
