@@ -1314,3 +1314,58 @@ body.loading #menu button {
     font-size: 12px;
   }
 }
+/* ── 自定义滚动条（桌面）：暖黄细条，替代浏览器默认滚动条 ── */
+.menu-panel,
+.guide-content,
+.result-panel {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 217, 94, 0.55) transparent;
+}
+
+.menu-panel::-webkit-scrollbar,
+.guide-content::-webkit-scrollbar,
+.result-panel::-webkit-scrollbar {
+  width: 6px;
+}
+
+.menu-panel::-webkit-scrollbar-track,
+.guide-content::-webkit-scrollbar-track,
+.result-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.menu-panel::-webkit-scrollbar-thumb,
+.guide-content::-webkit-scrollbar-thumb,
+.result-panel::-webkit-scrollbar-thumb {
+  background: rgba(255, 217, 94, 0.55);
+  border-radius: 3px;
+}
+
+.menu-panel::-webkit-scrollbar-thumb:hover,
+.guide-content::-webkit-scrollbar-thumb:hover,
+.result-panel::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 217, 94, 0.8);
+}
+
+/* ── 移动端可见的滚动进度指示条：JS 按滚动容器实际尺寸定位 ── */
+.scroll-indicator {
+  position: fixed;
+  display: none;
+  width: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.14);
+  pointer-events: none;
+  z-index: 31;
+}
+
+.scroll-indicator-thumb {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  min-height: 24px;
+  border-radius: 2px;
+  background: rgba(255, 217, 94, 0.75);
+  pointer-events: none;
+}
+

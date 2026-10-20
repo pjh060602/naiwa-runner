@@ -318,6 +318,15 @@ export class MenuUI {
   private readonly confirmRow = mustGet('score-confirm');
   private readonly versionLabel = mustGet('menu-version');
   private readonly diffRoot = mustGet('menu-difficulty');
+  private readonly resultPanel = ((): HTMLElement => {
+    const el = document.querySelector<HTMLElement>('.result-panel');
+    if (!el) throw new Error('缺少 DOM 节点 .result-panel');
+    return el;
+  })();
+  private readonly scrollContainers: ReadonlyArray<HTMLElement>;
+  private readonly indicators = new Map<HTMLElement, { track: HTMLDivElement; thumb: HTMLDivElement }>();
+  private readonly overlayObserver: MutationObserver;
+  private readonly onResize = (): void => this.updateIndicators();
 
   private settings: Settings;
 
@@ -396,15 +405,44 @@ export class MenuUI {
 
     mustGet('score-clear').addEventListener('click', () => {
       this.confirmRow.classList.remove('hidden');
+      this.updateIndicators();
     });
-    mustGet('score-cancel').addEventListener('click', () => this.confirmRow.classList.add('hidden'));
+    mustGet('score-cancel').addEventListener('click', () => {
+      this.confirmRow.classList.add('hidden');
+      this.updateIndicators();
+    });
     mustGet('score-confirm-yes').addEventListener('click', () => {
       clearHistory();
       this.confirmRow.classList.add('hidden');
       this.renderHistory([]);
+      this.updateIndicators();
     });
 
     this.commit(false);
+
+    this.scrollContainers = [
+      this.panelMenu,
+      this.panelSettings,
+      this.panelScores,
+      this.panelSkin,
+      this.panelPause,
+      this.panelGuide.querySelector<HTMLElement>('.guide-content') ?? this.panelGuide,
+      this.resultPanel,
+    ];
+    for (const container of this.scrollContainers) {
+      const track = document.createElement('div');
+      track.className = 'scroll-indicator';
+      const thumb = document.createElement('div');
+      thumb.className = 'scroll-indicator-thumb';
+      track.appendChild(thumb);
+      document.body.appendChild(track);
+      this.indicators.set(container, { track, thumb });
+      container.addEventListener('scroll', () => this.updateIndicator(container), { passive: true });
+    }
+    window.addEventListener('resize', this.onResize);
+    this.overlayObserver = new MutationObserver(() => this.updateIndicator(this.resultPanel));
+    this.overlayObserver.observe(mustGet('overlay'), { attributes: true, attributeFilter: ['class'] });
+    this.updateIndicators();
   }
 
   get current(): Settings {
@@ -415,11 +453,13 @@ export class MenuUI {
     this.root.classList.remove('hidden');
     this.showMain();
     this.applyMenuOpenClass();
+    this.updateIndicators();
   }
 
   hide(): void {
     this.root.classList.add('hidden');
     this.applyMenuOpenClass();
+    this.updateIndicators();
   }
 
   showPause(): void {
@@ -431,12 +471,14 @@ export class MenuUI {
     this.panelGuide.classList.add('hidden');
     this.panelSkin.classList.add('hidden');
     this.applyMenuOpenClass();
+    this.updateIndicators();
   }
 
   hidePause(): void {
     this.panelPause.classList.add('hidden');
     this.root.classList.add('hidden');
     this.applyMenuOpenClass();
+    this.updateIndicators();
   }
 
   /** 结算时把本局成绩写进旧榜单（兼容入口；历史纪录面板走 submitHistory） */
@@ -456,6 +498,7 @@ export class MenuUI {
     this.panelPause.classList.add('hidden');
     this.panelGuide.classList.add('hidden');
     this.panelSkin.classList.add('hidden');
+    this.updateIndicators();
   }
 
   private showSettings(): void {
@@ -465,6 +508,7 @@ export class MenuUI {
     this.panelPause.classList.add('hidden');
     this.panelGuide.classList.add('hidden');
     this.panelSkin.classList.add('hidden');
+    this.updateIndicators();
   }
 
   private showScores(): void {
@@ -476,6 +520,7 @@ export class MenuUI {
     this.panelScores.classList.remove('hidden');
     this.confirmRow.classList.add('hidden');
     this.renderHistory(loadHistory());
+    this.updateIndicators();
   }
 
   private showGuide(): void {
@@ -485,6 +530,7 @@ export class MenuUI {
     this.panelPause.classList.add('hidden');
     this.panelSkin.classList.add('hidden');
     this.panelGuide.classList.remove('hidden');
+    this.updateIndicators();
   }
 
   private showSkin(): void {
@@ -495,6 +541,7 @@ export class MenuUI {
     this.panelGuide.classList.add('hidden');
     this.panelSkin.classList.remove('hidden');
     this.renderSkin();
+    this.updateIndicators();
   }
 
   private renderDifficulty(): void {
@@ -533,6 +580,39 @@ export class MenuUI {
         '<span class="score-hits">' + entry.hits + '</span>';
       this.scoreList.appendChild(row);
     });
+  }
+
+  private updateIndicators(): void {
+    for (const container of this.scrollContainers) this.updateIndicator(container);
+  }
+
+  private updateIndicator(container: HTMLElement): void {
+    const els = this.indicators.get(container);
+    if (!els) return;
+    const rect = container.getBoundingClientRect();
+    const scrollHeight = container.scrollHeight;
+    const clientHeight = container.clientHeight;
+    // 只有内容真正超出（且面板当前可见）时才显示；display:none 的面板 rect 为 0 会自然隐藏
+    if (rect.width <= 0 || rect.height <= 0 || scrollHeight <= clientHeight + 1) {
+      els.track.style.display = 'none';
+      return;
+    }
+    const trackTop = rect.top + 12;
+    const trackHeight = rect.height - 24;
+    if (trackHeight <= 0) {
+      els.track.style.display = 'none';
+      return;
+    }
+    const thumbHeight = Math.max(24, (clientHeight / scrollHeight) * trackHeight);
+    const maxScroll = Math.max(1, scrollHeight - clientHeight);
+    const progress = Math.min(1, Math.max(0, container.scrollTop / maxScroll));
+    const thumbTop = progress * Math.max(0, trackHeight - thumbHeight);
+    els.track.style.display = 'block';
+    els.track.style.left = (rect.right - 6 - 3) + 'px';
+    els.track.style.top = trackTop + 'px';
+    els.track.style.height = trackHeight + 'px';
+    els.thumb.style.top = thumbTop + 'px';
+    els.thumb.style.height = thumbHeight + 'px';
   }
 
   private applyMenuOpenClass(): void {
