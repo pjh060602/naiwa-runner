@@ -1,4 +1,4 @@
-export type Intent = 'left' | 'right' | 'jump' | 'slideStart' | 'slideEnd';
+export type Intent = 'left' | 'right' | 'jump' | 'slideStart' | 'slideEnd' | 'tap';
 
 export interface InputHandlers {
   onIntent(intent: Intent): void;
@@ -43,7 +43,11 @@ export function createInput(target: HTMLElement, handlers: InputHandlers): { dis
       return;
     }
     const intent = KEY_MAP[event.code];
-    if (intent === undefined) return;
+    if (intent === undefined) {
+      // 未映射的键也当成一次「轻点」：演出阶段靠它跳过（提示写的是「任意键」）
+      if (!event.repeat) handlers.onIntent('tap');
+      return;
+    }
     event.preventDefault();
     if (event.repeat) return;
     handlers.onIntent(intent);
@@ -101,11 +105,15 @@ export function createInput(target: HTMLElement, handlers: InputHandlers): { dis
     const touch = event.changedTouches[0];
     if (touch && touch.identifier !== touchId) return;
     touchId = null;
+    const wasSwipe = fired;
     fired = false;
     if (slideHeld) {
       slideHeld = false;
       handlers.onIntent('slideEnd');
+      return;
     }
+    // 轻点（没触发滑动手势）：手机端跳过演出要用到
+    if (!wasSwipe) handlers.onIntent('tap');
   };
 
   window.addEventListener('keydown', onKeyDown);
@@ -114,7 +122,12 @@ export function createInput(target: HTMLElement, handlers: InputHandlers): { dis
   target.addEventListener('touchstart', onTouchStart, { passive: true });
   target.addEventListener('touchmove', onTouchMove, { passive: false });
   target.addEventListener('touchend', onTouchEnd);
-  target.addEventListener('touchcancel', onTouchEnd);
+  // 触摸被系统取消不算轻点（避免误跳过演出）
+  target.addEventListener('touchcancel', () => {
+    touchId = null;
+    fired = false;
+    slideHeld = false;
+  });
 
   return {
     dispose(): void {
