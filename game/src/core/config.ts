@@ -135,6 +135,8 @@ export const STAGE_TURN_SECONDS = 0.9;
 export const STAGE_ORBIT_SECONDS = 0.9;
 export const CLIP_LAUGH_URL = 'audio/laugh_mid.mp3';
 export const CLIP_LAUGH_FALLBACK = 4.0;
+export const CLIP_LAUGH_SHORT_URL = 'audio/laugh_short.mp3';
+export const CLIP_LAUGH_SHORT_FALLBACK = 1.6;
 export const CLIP_KANG_URL = 'audio/kang_line.mp3';
 export const CLIP_KANG_FALLBACK = 2.8;
 

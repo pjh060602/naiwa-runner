@@ -17,6 +17,8 @@ import {
   CLIP_KANG_FALLBACK,
   CLIP_KANG_URL,
   CLIP_LAUGH_FALLBACK,
+  CLIP_LAUGH_SHORT_FALLBACK,
+  CLIP_LAUGH_SHORT_URL,
   CLIP_LAUGH_URL,
   DIFFICULTY,
   FIXED_DT,
@@ -164,6 +166,10 @@ export class Game {
   private bumpCooldownUntil = 0;
   private invulnUntil = 0;
   private wasFlying = false;
+
+  /** 升天阶段时长（≈ 升天音效长度，2 倍速后 2.62s）与抬升高度 */
+  private static readonly ASCEND_SECONDS = 2.6;
+  private static readonly ASCEND_LIFT = 2.0;
 
   /** 复活演出：升天 → 捧腹大笑 → 袋鼠台词 → 继续跑 */
   private revivePhase: 'none' | 'ascend' | 'laugh' | 'line' = 'none';
@@ -794,6 +800,11 @@ export class Game {
       this.skipRevive();
       return;
     }
+    // 结算面板：V / Enter 直接复活（键盘快捷键）
+    if (intent === 'revive') {
+      if (this.state === 'result') this.startRevive();
+      return;
+    }
     if (this.handleFirstInput()) return;
     if (intent === 'left') {
       if (this.player.moveLane(-1)) this.audio.play('lane');
@@ -1123,7 +1134,8 @@ export class Game {
     this.naiwaTextures.set('laugh');
     console.log('[revive] 升天音效结束 → 复位、捧腹大笑');
     const token = ++this.reviveToken;
-    void this.audio.playClip(CLIP_LAUGH_URL, CLIP_LAUGH_FALLBACK).then(() => {
+    // 复活用短笑声（1.6s），别让演出拖太久
+    void this.audio.playClip(CLIP_LAUGH_SHORT_URL, CLIP_LAUGH_SHORT_FALLBACK).then(() => {
       if (token === this.reviveToken) this.enterReviveLine();
     });
   }
@@ -1163,24 +1175,75 @@ export class Game {
     console.log('[revive] 演出结束，继续奔跑（复活后的成绩不记录）');
   }
 
+  /**
+   * 复活演出沿用开场对话的正面 3/4 机位：奶蛙与袋鼠都在画面里，
+   * 相机与站位都由 stagePose 给出（仍是原地，不移动世界）。
+   */
   private updateRevive(dt: number): void {
     this.reviveTimer += dt;
     if (this.revivePhase === 'ascend') {
-      const t = Math.min(1, this.reviveTimer / 1.1);
-      this.reviveLift = 1.1 * (1 - (1 - t) * (1 - t));
+      // 升天音效没播完就一直往上飘（ASCEND_SECONDS ≈ 音效长度），播完才复位
+      const p = Math.min(1, this.reviveTimer / Game.ASCEND_SECONDS);
+      this.reviveLift = Game.ASCEND_LIFT * p;
     }
+    const pose = stagePose(this.revivePhase === 'line' ? 'intro-line' : 'intro-laugh', this.reviveTimer);
+
     this.rigPrev.copy(this.rigCur);
     this.rigCur.set(this.player.x, this.player.y + this.reviveLift, this.player.z);
     this.rig.root.position.copy(this.rigCur);
     this.rig.root.rotation.y = 0;
+    if (pose.naiwaState !== this.rigState) {
+      this.rig.setState(pose.naiwaState);
+      this.rigState = pose.naiwaState;
+    }
+    this.rig.setSpeed(0.6);
     this.rig.update(dt);
-    this.chaserView.update(dt, this.chaser, this.player.z, this.player.x);
-    this.syncFootShadows();
-    // 相机保持最后一段跑动机位，只把视线随奶蛙升高稍稍上抬
+    this.naiwaTextures.set(this.revivePhase === 'ascend' ? 'ascend' : 'laugh');
+    this.updateNaiwaPop(dt);
+
+    // 袋鼠站在奶蛙前方的画面里（正面机位），演出期间一直可见
+    this.chaserView.placeManual(
+      this.player.x + pose.chaserX,
+      this.player.z + pose.chaserZ,
+      pose.chaserRotation,
+      pose.chaserState,
+      dt,
+    );
+
+    // 正面 3/4 机位；奶蛙升多高，相机与视线就跟着抬高多少（保持在画面里）
+    this.camPrevX = this.camX;
+    this.camPrevY = this.camY;
+    this.camPrevZ = this.camZ;
+    this.camX = this.player.x + pose.cameraX;
+    this.camY = pose.cameraY + this.reviveLift * 0.25;
+    this.camZ = this.player.z + pose.cameraZ;
+    this.lookPrevX = this.lookX;
     this.lookPrevY = this.lookY;
-    this.lookY = 1.15 + this.reviveLift * 0.55;
-    this.camera.position.set(this.camX, this.camY, this.camZ);
-    this.camera.lookAt(this.lookX, this.lookY, this.lookZ);
+    this.lookPrevZ = this.lookZ;
+    this.lookX = this.player.x + pose.lookX;
+    this.lookY = pose.lookY + this.reviveLift * 0.6;
+    this.lookZ = this.player.z + pose.lookZ;
+    this.fovPrev = this.fov;
+    this.fov = FOV_NEAR;
+    this.syncFootShadows();
+
+    // HUD 保持真实数值（不要因为演出清零）
+    const chaserMax = DIFFICULTY[this.difficulty].chaserStart;
+    this.hud.update({
+      distance: this.distance,
+      speed: this.speed,
+      bottles: this.bottleCount % BOTTLE_PER_BOOST,
+      bottlesPerBoost: BOTTLE_PER_BOOST,
+      boostLeft: this.boostLeft,
+      boostTotal: BOOST_TIME,
+      state: this.revivePhase === 'line' ? '袋鼠：你的胆子真是肥嘟嘟的' : '奶蛙：复活！',
+      chaserDistance: this.chaser.distance,
+      chaserMax,
+      chaserDanger: this.chaser.danger,
+      magnetLeft: this.magnetLeft,
+      shieldActive: this.shieldActive,
+      flyLeft: this.player.flyLeft,
+    });
   }
 
   private startCaught(): void {

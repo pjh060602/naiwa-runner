@@ -1,4 +1,4 @@
-export type Intent = 'left' | 'right' | 'jump' | 'slideStart' | 'slideEnd' | 'tap';
+export type Intent = 'left' | 'right' | 'jump' | 'slideStart' | 'slideEnd' | 'tap' | 'revive';
 
 export interface InputHandlers {
   onIntent(intent: Intent): void;
@@ -18,6 +18,9 @@ const KEY_MAP: Readonly<Record<string, Intent>> = {
   Space: 'jump',
   ArrowDown: 'slideStart',
   KeyS: 'slideStart',
+  // 结算面板的复活快捷键（V 或 Enter）
+  KeyV: 'revive',
+  Enter: 'revive',
 };
 
 /** 键抬起时算「松手」的键（长按肚皮滑铲靠它判断） */
