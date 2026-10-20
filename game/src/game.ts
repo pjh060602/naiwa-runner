@@ -352,7 +352,9 @@ export class Game {
     this.input = createInput(this.renderer.domElement, {
       onIntent: (intent) => this.handleIntent(intent),
       onRestart: () => {
+        // R 在 input.ts 里被提前拦截、不会转成 tap 意图，所以复活演出要单独在这里跳过
         if (this.state === 'result') this.restart();
+        else if (this.state === 'revive') this.skipRevive();
       },
     });
     document.addEventListener('visibilitychange', () => {
@@ -1102,6 +1104,8 @@ export class Game {
     this.stageQueue = [];
     this.stageIndex = 0;
     this.stagingPaused = false;
+    this.skipHint.textContent = '任意键 / 点击屏幕 跳过复活演出';
+    this.skipHint.classList.remove('hidden');
     const token = ++this.reviveToken;
     console.log(`[revive] 复活：里程 ${Math.floor(this.distance)}m / 奶瓶 ${this.bottleCount} / 速度 ${this.speed.toFixed(1)} 保持不变，升天演出开始`);
     void this.audio.playClip('audio/ascend.mp3', 5.2).then(() => {
@@ -1148,6 +1152,7 @@ export class Game {
   private finishRevive(): void {
     this.revivePhase = 'none';
     this.reviveLift = 0;
+    this.skipHint.classList.add('hidden');
     this.stageToken += 1;
     this.naiwaTextures.set('auto');
     this.rig.setState('run');
