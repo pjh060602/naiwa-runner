@@ -309,9 +309,15 @@ export class Game {
       this.audio.unlock();
       this.audio.startBgm();
     };
+    // 微信内置浏览器可能第一次手势没解开（仍是 suspended），这里保留一个常驻监听反复尝试；
+    // 只调 unlock（幂等），不重复 startBgm。
+    const retryUnlock = (): void => this.audio.unlock();
     window.addEventListener('pointerdown', unlockAudio, { once: true });
     window.addEventListener('keydown', unlockAudio, { once: true });
     window.addEventListener('touchstart', unlockAudio, { once: true, passive: true });
+    // 常驻：微信里首次手势常常解不开，用户下一次触摸继续尝试
+    window.addEventListener('pointerdown', retryUnlock, { passive: true });
+    window.addEventListener('touchstart', retryUnlock, { passive: true });
 
     this.input = createInput(this.renderer.domElement, {
       onIntent: (intent) => this.handleIntent(intent),

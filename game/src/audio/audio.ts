@@ -116,6 +116,61 @@ export class AudioBus {
     return this.context ? this.context.state : 'closed';
   }
 
+  /**
+   * 微信内置浏览器（X5 / WKWebView）要求：WeixinJSBridgeReady 之后、且在真实手势里
+   * 播过一次音频，AudioContext 才会真正运行。普通浏览器点一下就能起来，微信里不行，
+   * 所以这里补一套「静音缓冲 kick」。
+   */
+  private readonly isWechat = /MicroMessenger/i.test(typeof navigator === 'undefined' ? '' : navigator.userAgent);
+  private wechatHookInstalled = false;
+
+  /** 播一段 1 帧静音缓冲：微信/iOS 用它把 AudioContext 从 suspended 顶到 running。 */
+  private primeSilent(context: AudioContext): void {
+    try {
+      const buffer = context.createBuffer(1, Math.ceil(context.sampleRate * 0.02), context.sampleRate);
+      const source = context.createBufferSource();
+      source.buffer = buffer;
+      source.connect(this.master ?? context.destination);
+      source.start(0);
+    } catch {
+      /* 被浏览器拒绝就算了，下一轮手势会再试 */
+    }
+  }
+
+  /** 手势里调用：resume + kick，微信和普通浏览器都安全（幂等）。 */
+  private kick(): void {
+    const context = this.context;
+    if (!context) return;
+    if (context.state !== 'running') void context.resume();
+    this.primeSilent(context);
+  }
+
+  private installWechatHook(): void {
+    if (this.wechatHookInstalled) return;
+    this.wechatHookInstalled = true;
+    const bridge = (window as unknown as {
+      WeixinJSBridge?: { invoke: (name: string, params: Record<string, never>, cb?: () => void) => void };
+    }).WeixinJSBridge;
+    if (bridge) {
+      // 已存在（脚本比 bridge 晚加载）：直接调一次让它把音频通道打开
+      bridge.invoke('getNetworkType', {}, () => this.kick());
+      console.log('[audio] 微信环境：已通过 WeixinJSBridge 解锁音频');
+      return;
+    }
+    document.addEventListener(
+      'WeixinJSBridgeReady',
+      () => {
+        (window as unknown as { WeixinJSBridge?: { invoke: (n: string, p: Record<string, never>, cb?: () => void) => void } }).WeixinJSBridge?.invoke(
+          'getNetworkType',
+          {},
+          () => this.kick(),
+        );
+        console.log('[audio] 微信环境：WeixinJSBridgeReady 已触发解锁');
+      },
+      { once: true },
+    );
+  }
+
   /** 首次用户交互后调用；可重复调用。 */
   unlock(): void {
     this.unlocked = true;
@@ -140,10 +195,13 @@ export class AudioBus {
       this.noise = this.createNoiseBuffer(this.context);
       console.log('[audio] AudioContext 已创建');
     }
-    if (this.context.state === 'suspended') {
-      const context = this.context;
+    const context = this.context;
+    if (context.state === 'suspended') {
       void context.resume().then(() => console.log('[audio] AudioContext 已 resume，state=' + context.state));
     }
+    // 每次手势都补一次 kick：微信首次可能仍被挂起，用户下一次触摸会把它顶起来
+    this.kick();
+    if (this.isWechat) this.installWechatHook();
   }
 
   private createNoiseBuffer(context: AudioContext): AudioBuffer {
