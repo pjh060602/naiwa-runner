@@ -6,9 +6,14 @@
 
 html,
 body {
+  /* 移动端锁定视口：body 固定后页面本身不可滚动，
+     否则浏览器上下滑会带着游戏窗口一起走（动态地址栏 + 橡皮筋滚动 + 下拉刷新）。 */
+  position: fixed;
+  inset: 0;
   width: 100%;
   height: 100%;
   overflow: hidden;
+  overscroll-behavior: none;
   background: linear-gradient(168deg, #10426c 0%, #15517f 34%, #ef7d4d 72%, #ffb85c 100%);
   color: #f2f4f8;
   font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
